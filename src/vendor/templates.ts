@@ -27,8 +27,10 @@ export interface VendorTemplate {
   note?: string;
 }
 
+export type VendorId = "fortios" | "cisco-ios" | "pfsense";
+
 export interface Vendor {
-  id: "fortios" | "cisco-ios" | "pfsense";
+  id: VendorId;
   name: string;
   templates: VendorTemplate[];
 }

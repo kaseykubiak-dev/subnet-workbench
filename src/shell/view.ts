@@ -1,0 +1,349 @@
+/**
+ * Page shell view: Variant A "Command Deck" (chosen 2026-07-22 from
+ * mockups/page-shell-mockups.html).
+ *
+ * Pure render functions: ShellState in, HTML strings out. No DOM access
+ * here; src/shell/app.ts owns mounting and events. Regions render
+ * separately (tabs / input / output / footer) so the app can re-render
+ * results live without blowing away textarea focus.
+ *
+ * Layout: parallelogram tabs across the top, input pinned in a left
+ * column, visual + text results on the right, hand-off buttons under the
+ * results, opt-in share link in a persistent footer status bar.
+ */
+
+import { numberToIp } from "../engine/ipv4";
+import { parseSubnetList } from "../engine/parse";
+import type { ParseError, ParsedSubnet } from "../engine/parse";
+import { calculate, renderCalculateText } from "../modes/calculate";
+import { findOverlaps, renderOverlapText } from "../modes/overlap";
+import {
+  allocateVlsm,
+  parseRequirementList,
+  renderVlsmText,
+} from "../modes/vlsm";
+import { renderVendor, vendorById } from "../vendor/render";
+import { VENDORS } from "../vendor/templates";
+import { renderBitRibbon } from "../visuals/bitRibbon";
+import { renderPrefixSplit } from "../visuals/prefixSplit";
+import { renderSpaceMap } from "../visuals/spaceMap";
+import { VLSM_LEDGER_CSS, renderVlsmLedger } from "../visuals/vlsmLedger";
+import { esc } from "../visuals/svg";
+import type { ShellState } from "./state";
+import { MODES, effectiveSplitTarget, heldSubnetCount } from "./state";
+
+// ---------------------------------------------------------------------------
+// Shared fragments
+// ---------------------------------------------------------------------------
+
+/** The subnet as a hand-off line: label preserved when present. */
+export function handoffLine(s: ParsedSubnet): string {
+  const cidr = `${numberToIp(s.network)}/${s.prefix}`;
+  return s.label !== undefined ? `${s.label}: ${cidr}` : cidr;
+}
+
+function errorsBlock(errors: ParseError[]): string {
+  if (errors.length === 0) return "";
+  const rows = errors
+    .map(
+      (e) =>
+        `<div class="swb-error">line ${e.lineNumber}: ${esc(e.raw)} &mdash;&gt; ${esc(e.message)}</div>`
+    )
+    .join("");
+  return `<div class="swb-errors">${rows}</div>`;
+}
+
+function pre(text: string): string {
+  return `<pre class="swb-pre">${esc(text)}</pre>`;
+}
+
+function hint(text: string): string {
+  return `<div class="swb-hint">${esc(text)}</div>`;
+}
+
+function handoffRow(...buttons: string[]): string {
+  return `<div class="swb-handoff">${buttons.join("")}</div>`;
+}
+
+function handoffBtn(action: string, line: string, label: string): string {
+  return `<button class="swb-btn" data-action="${esc(action)}" data-line="${esc(line)}">&#8594; ${esc(label)}</button>`;
+}
+
+// ---------------------------------------------------------------------------
+// Input panels (left column)
+// ---------------------------------------------------------------------------
+
+function textarea(field: string, value: string, rows: number, placeholder: string): string {
+  return (
+    `<textarea class="swb-input" data-field="${esc(field)}" rows="${rows}" ` +
+    `placeholder="${esc(placeholder)}" spellcheck="false">${esc(value)}</textarea>`
+  );
+}
+
+function fieldLabel(text: string): string {
+  return `<div class="swb-field-label">${esc(text)}</div>`;
+}
+
+export function renderInputPanel(state: ShellState): string {
+  switch (state.mode) {
+    case "calculate":
+      return (
+        fieldLabel("Subnet input") +
+        textarea("calculateInput", state.calculateInput, 4, "192.168.1.0/26\nCIDR, mask, or slash-mask; label optional") +
+        `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
+      );
+    case "overlap":
+      return (
+        fieldLabel("Subnet list (one per line)") +
+        textarea("overlapInput", state.overlapInput, 12, "Knoxville: 10.10.0.0/16\nNashville: 10.10.32.0/20\n# labels optional, bad lines flagged inline") +
+        `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
+      );
+    case "vlsm":
+      return (
+        fieldLabel("Supernet") +
+        textarea("vlsmSupernetInput", state.vlsmSupernetInput, 1, "10.0.0.0/24") +
+        fieldLabel("Requirements (one per line)") +
+        textarea("vlsmRequirementsInput", state.vlsmRequirementsInput, 8, "Engineering, 100 hosts\nSales: 50\n20") +
+        fieldLabel("Growth headroom %") +
+        `<input class="swb-input swb-num" data-field="vlsmHeadroom" type="number" min="0" max="400" value="${state.vlsmHeadroom}">` +
+        `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
+      );
+    case "vendor": {
+      const options = VENDORS.map(
+        (v) =>
+          `<option value="${esc(v.id)}"${v.id === state.vendorId ? " selected" : ""}>${esc(v.name)}</option>`
+      ).join("");
+      return (
+        fieldLabel("Platform") +
+        `<select class="swb-input swb-select" data-field="vendorId">${options}</select>` +
+        fieldLabel("Subnet list (one per line)") +
+        textarea("vendorInput", state.vendorInput, 10, "Site A: 10.0.0.0/26") +
+        `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Output panels (right column)
+// ---------------------------------------------------------------------------
+
+function renderCalculateOutput(state: ShellState): string {
+  const { subnets, errors } = parseSubnetList(state.calculateInput);
+  const first = subnets[0];
+  if (first === undefined) {
+    return (
+      errorsBlock(errors) +
+      hint("Enter a subnet to see the full derivation, the 32-bit view, and the prefix split.")
+    );
+  }
+  const result = calculate(first);
+  const target = effectiveSplitTarget(state, first.prefix);
+  const sliderDisabled = first.prefix === 32 ? " disabled" : "";
+  const line = handoffLine(first);
+  return (
+    errorsBlock(errors) +
+    `<div class="swb-visual">${renderBitRibbon(first.address, first.prefix)}</div>` +
+    `<div class="swb-split-head">` +
+    `<span class="swb-field-label swb-inline">Prefix split</span>` +
+    `<input class="swb-slider" data-field="splitTarget" type="range" min="${first.prefix}" max="32" value="${target}"${sliderDisabled}>` +
+    `<span class="swb-split-val" id="swb-split-val">/${target}</span>` +
+    `</div>` +
+    `<div class="swb-visual" id="swb-split-visual">${renderPrefixSplit({ network: first.network, prefix: first.prefix }, target)}</div>` +
+    pre(renderCalculateText(result)) +
+    handoffRow(
+      handoffBtn("handoff-overlap", line, "Add to Overlap list"),
+      handoffBtn("handoff-vlsm", `${numberToIp(first.network)}/${first.prefix}`, "Use as VLSM supernet"),
+      handoffBtn("handoff-vendor", line, "Vendor syntax")
+    )
+  );
+}
+
+function renderOverlapOutput(state: ShellState): string {
+  const { subnets, errors } = parseSubnetList(state.overlapInput);
+  const result = findOverlaps(subnets);
+  if (subnets.length === 0) {
+    return (
+      errorsBlock(errors) +
+      hint("Paste a subnet list to check for conflicts. Labels make the report readable: \"Knoxville overlaps Nashville\" beats \"these two overlap\".")
+    );
+  }
+  return (
+    errorsBlock(errors) +
+    `<div class="swb-visual">${renderSpaceMap(result)}</div>` +
+    pre(renderOverlapText(result)) +
+    handoffRow(handoffBtn("overlap-to-vendor", "", "Send list to Vendor Syntax"))
+  );
+}
+
+function renderVlsmOutput(state: ShellState): string {
+  const supernetParse = parseSubnetList(state.vlsmSupernetInput);
+  const reqParse = parseRequirementList(state.vlsmRequirementsInput);
+  const supernet = supernetParse.subnets[0];
+  const reqErrors = reqParse.errors.map((e) => ({
+    lineNumber: e.lineNumber,
+    raw: e.raw,
+    message: e.message,
+  }));
+  if (supernet === undefined) {
+    return (
+      errorsBlock([...supernetParse.errors, ...reqErrors]) +
+      hint("Give a supernet and per-requirement host counts; allocation is largest-first with stranded space shown explicitly.")
+    );
+  }
+  const result = allocateVlsm(supernet, reqParse.requirements, {
+    headroomPercent: state.vlsmHeadroom,
+  });
+  return (
+    errorsBlock([...supernetParse.errors, ...reqErrors]) +
+    `<div class="swb-visual swb-visual-html">${renderVlsmLedger(result)}</div>` +
+    pre(renderVlsmText(result)) +
+    (result.allocations.length > 0
+      ? handoffRow(handoffBtn("vlsm-to-vendor", "", "Send allocations to Vendor Syntax"))
+      : "")
+  );
+}
+
+function renderVendorOutput(state: ShellState): string {
+  const { subnets, errors } = parseSubnetList(state.vendorInput);
+  if (subnets.length === 0) {
+    return (
+      errorsBlock(errors) +
+      hint("Paste subnets (or hand them off from any mode) to render interface, route, address-object, and policy syntax. <angle> fields are yours to fill.")
+    );
+  }
+  const vendor = vendorById(state.vendorId);
+  const sections: string[] = [errorsBlock(errors)];
+  subnets.forEach((s, si) => {
+    const rendered = renderVendor(vendor, {
+      network: s.network,
+      prefix: s.prefix,
+      ...(s.label !== undefined ? { label: s.label } : {}),
+    });
+    const blocks = rendered
+      .map((r, ri) => {
+        const blockId = `swb-code-${si}-${ri}`;
+        return (
+          `<div class="swb-codeblock">` +
+          `<div class="swb-codehead"><span>${esc(r.title)}</span>` +
+          `<button class="swb-btn swb-copy" data-action="copy-block" data-copy-target="${blockId}">Copy</button></div>` +
+          `<pre class="swb-pre" id="${blockId}">${esc(r.text)}</pre>` +
+          (r.note !== undefined ? `<div class="swb-note">${esc(r.note)}</div>` : "") +
+          `</div>`
+        );
+      })
+      .join("");
+    sections.push(
+      `<div class="swb-vendor-subnet">` +
+        `<div class="swb-subhead">${esc(handoffLine(s))}</div>` +
+        blocks +
+        `</div>`
+    );
+  });
+  return sections.join("");
+}
+
+export function renderOutput(state: ShellState): string {
+  switch (state.mode) {
+    case "calculate":
+      return renderCalculateOutput(state);
+    case "overlap":
+      return renderOverlapOutput(state);
+    case "vlsm":
+      return renderVlsmOutput(state);
+    case "vendor":
+      return renderVendorOutput(state);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tabs, footer, full shell
+// ---------------------------------------------------------------------------
+
+export function renderTabs(state: ShellState): string {
+  return MODES.map((m) => {
+    const active = m.id === state.mode ? " swb-active" : "";
+    return (
+      `<button class="swb-tab${active}" data-action="set-mode" data-mode="${m.id}">` +
+      `<span class="swb-tabbg"></span><span class="swb-tablbl">${esc(m.label)}</span></button>`
+    );
+  }).join("");
+}
+
+export function renderFooter(state: ShellState): string {
+  const mode = MODES.find((m) => m.id === state.mode);
+  const held = heldSubnetCount(state);
+  return (
+    `<div class="swb-status">MODE <b>${esc(mode?.label.toUpperCase() ?? "")}</b>` +
+    ` &nbsp;&middot;&nbsp; ${held} SUBNET${held === 1 ? "" : "S"} HELD</div>` +
+    `<button class="swb-btn swb-ghost" data-action="copy-share">Copy shareable link</button>`
+  );
+}
+
+export function renderShell(state: ShellState): string {
+  return (
+    `<div class="swb-app">` +
+    `<div class="swb-tabs" id="swb-tabs">${renderTabs(state)}</div>` +
+    `<div class="swb-body">` +
+    `<div class="swb-left" id="swb-input">${renderInputPanel(state)}</div>` +
+    `<div class="swb-right" id="swb-output">${renderOutput(state)}</div>` +
+    `</div>` +
+    `<div class="swb-footer" id="swb-footer">${renderFooter(state)}</div>` +
+    `</div>`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stylesheet
+// ---------------------------------------------------------------------------
+
+export const SHELL_CSS = `
+.swb-app { border: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-deep, #040a14); font-family: var(--font-body, 'Saira', sans-serif); color: var(--color-white, #eef6ff); }
+.swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); }
+.swb-tab { position: relative; font-family: var(--font-display, 'Chakra Petch', sans-serif); font-size: 0.78rem; letter-spacing: 0.08em; color: #6666ff; padding: 10px 22px 12px; cursor: pointer; background: none; border: none; }
+.swb-tabbg { position: absolute; inset: 0; transform: skewX(-12deg) translateY(6px); border: 1px solid rgba(17,85,255,0.35); border-bottom: none; transition: transform 0.15s, border-color 0.15s; }
+.swb-tablbl { position: relative; z-index: 1; }
+.swb-tab:hover .swb-tabbg { transform: skewX(-12deg) translateY(2px); }
+.swb-tab.swb-active { color: var(--color-white, #eef6ff); }
+.swb-tab.swb-active .swb-tabbg { transform: skewX(-12deg) translateY(0); border-color: rgba(17,85,255,0.75); background: rgba(17,85,255,0.12); }
+.swb-body { display: grid; grid-template-columns: 340px 1fr; }
+.swb-left { padding: 22px 20px; border-right: 1px solid var(--bord, rgba(77,166,255,0.28)); }
+.swb-right { padding: 22px 24px; min-width: 0; }
+.swb-field-label { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-dim, #4477aa); margin: 14px 0 6px; }
+.swb-field-label:first-child { margin-top: 0; }
+.swb-input { width: 100%; box-sizing: border-box; background: var(--color-panel, #030812); border: 1px solid var(--bord, rgba(77,166,255,0.28)); color: var(--color-ice, #b0d8ff); font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.72rem; line-height: 1.7; padding: 10px 12px; resize: vertical; }
+.swb-input:focus { outline: none; border-color: var(--bord-teal, rgba(0,255,204,0.36)); }
+.swb-num { width: 90px; }
+.swb-select { appearance: none; cursor: pointer; }
+.swb-run { margin-top: 12px; display: flex; gap: 8px; }
+.swb-btn { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-teal, #00ffcc); background: rgba(0,255,204,0.06); border: 1px solid var(--bord-teal, rgba(0,255,204,0.36)); padding: 6px 12px; cursor: pointer; }
+.swb-btn:hover { background: rgba(0,255,204,0.14); }
+.swb-ghost { color: var(--color-dim, #4477aa); background: transparent; border-color: var(--bord, rgba(77,166,255,0.28)); }
+.swb-ghost:hover { color: var(--color-mid, #6699cc); background: rgba(77,166,255,0.06); }
+.swb-visual { margin-bottom: 16px; }
+.swb-visual svg { display: block; width: 100%; height: auto; }
+.swb-split-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
+.swb-inline { margin: 0; }
+.swb-slider { flex: 1; accent-color: var(--color-teal, #00ffcc); }
+.swb-split-val { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.72rem; color: var(--color-amber, #ffaa00); min-width: 34px; text-align: right; }
+.swb-pre { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.68rem; line-height: 1.9; color: var(--color-mid, #6699cc); white-space: pre; overflow-x: auto; margin: 0 0 4px; }
+.swb-hint { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.66rem; line-height: 1.9; color: var(--color-dim, #4477aa); border: 1px dashed var(--bord, rgba(77,166,255,0.28)); padding: 14px 16px; }
+.swb-errors { margin-bottom: 12px; }
+.swb-error { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.62rem; line-height: 1.8; color: var(--color-amber, #ffaa00); border-left: 2px solid var(--color-amber, #ffaa00); background: rgba(255,170,0,0.06); padding: 4px 10px; margin-bottom: 4px; }
+.swb-handoff { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(77,166,255,0.15); }
+.swb-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); }
+.swb-status { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.58rem; letter-spacing: 0.16em; color: var(--color-dim, #4477aa); }
+.swb-status b { color: var(--color-teal, #00ffcc); font-weight: 400; }
+.swb-vendor-subnet { margin-bottom: 22px; }
+.swb-subhead { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--color-teal, #00ffcc); margin-bottom: 10px; }
+.swb-codeblock { border: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); margin-bottom: 10px; }
+.swb-codehead { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; border-bottom: 1px solid rgba(77,166,255,0.15); font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-bright, #4da6ff); }
+.swb-copy { padding: 3px 9px; font-size: 0.52rem; }
+.swb-codeblock .swb-pre { padding: 10px 12px; }
+.swb-note { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.58rem; line-height: 1.7; color: var(--color-dim, #4477aa); padding: 6px 12px 10px; }
+@media (max-width: 768px) {
+  .swb-body { grid-template-columns: 1fr; }
+  .swb-left { border-right: none; border-bottom: 1px solid var(--bord, rgba(77,166,255,0.28)); }
+}
+${VLSM_LEDGER_CSS}
+`.trim();

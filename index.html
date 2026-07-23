@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subnet Workbench — dev harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Saira:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  /* Site CSS variables (V6A). On kaseykubiak.com these come from the global
+     stylesheet; the shell falls back to these hexes when they are absent. */
+  :root {
+    --color-void: #020509; --color-deep: #040a14; --color-panel: #030812;
+    --color-blue: #0044dd; --color-glow: #1155ff; --color-bright: #4da6ff; --color-ice: #b0d8ff;
+    --color-teal: #00ffcc; --color-amber: #ffaa00;
+    --color-white: #eef6ff; --color-mid: #6699cc; --color-dim: #4477aa;
+    --bord: rgba(77,166,255,0.28); --bord-teal: rgba(0,255,204,0.36);
+    --font-display: 'Chakra Petch', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-body: 'Saira', sans-serif;
+  }
+  body { margin: 0; background: var(--color-void); padding: 48px 24px; }
+  .harness { max-width: 1100px; margin: 0 auto; }
+  .eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--color-teal); margin-bottom: 16px; }
+  .eyebrow::before { content: "// "; color: var(--color-amber); }
+</style>
+</head>
+<body>
+  <div class="harness">
+    <div class="eyebrow">Subnet Workbench — dev harness</div>
+    <div id="subnet-workbench"></div>
+  </div>
+  <script src="./dist/app.js"></script>
+</body>
+</html>

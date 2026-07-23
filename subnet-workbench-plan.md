@@ -156,6 +156,8 @@ Visual-first is the core identity, not decoration. Every mode has a hero visual.
 
 **Notes:** The shareable-link restraint is a real concern, not a theoretical one. That link contains customer addressing, and once encoded it propagates into ticket systems, chat logs, and browser history whether or not anyone intended it. This also partly justifies the offline standalone build.
 
+**Shell treatment chosen 2026-07-22** (from `mockups/page-shell-mockups.html`, kept for revisiting): **Variant A "Command Deck"**, taken whole. Nav-style parallelogram tabs across the top; two-column workspace (input pinned left, visual + results right); hand-off as a button row under the results; opt-in "Copy shareable link" in a persistent footer status bar alongside mode/held-subnet status.
+
 ### Step 9: Standalone single-file HTML build
 
 **What happens:** Generated from the same source at build time — offline, zero-dependency, distributable, no external requests.
