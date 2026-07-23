@@ -3,17 +3,38 @@
  *
  * Bundles src/shell/main.ts with esbuild and inlines the result into one
  * HTML file with zero external requests: no font links, no script tags
- * pointing anywhere, no CDN. Fonts fall back to system stacks via the
- * same CSS variables the site build uses, so the shell CSS needs no
- * changes. Output: dist/subnet-workbench.html.
+ * pointing anywhere, no CDN. The site typography (Chakra Petch, IBM Plex
+ * Mono, Saira — latin subsets vendored in src/fonts/, same set as the
+ * FortiGate CLI reference standalone) is embedded as base64 @font-face
+ * rules, so the offline build matches the site exactly.
+ * Output: dist/subnet-workbench.html.
  */
 
 import { build } from "esbuild";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// Fonts embedded into the standalone (kaseykubiak.com typography, latin subsets).
+const FONTS = [
+  { file: "chakra-petch-latin-600-normal.woff2", family: "Chakra Petch", weight: 600 },
+  { file: "chakra-petch-latin-700-normal.woff2", family: "Chakra Petch", weight: 700 },
+  { file: "ibm-plex-mono-latin-400-normal.woff2", family: "IBM Plex Mono", weight: 400 },
+  { file: "ibm-plex-mono-latin-600-normal.woff2", family: "IBM Plex Mono", weight: 600 },
+  { file: "saira-latin-300-normal.woff2", family: "Saira", weight: 300 },
+  { file: "saira-latin-400-normal.woff2", family: "Saira", weight: 400 },
+  { file: "saira-latin-600-normal.woff2", family: "Saira", weight: 600 },
+];
+
+let fontCss = "";
+for (const f of FONTS) {
+  const buf = await readFile(join(root, "src", "fonts", f.file));
+  fontCss +=
+    `@font-face{font-family:'${f.family}';font-style:normal;font-weight:${f.weight};font-display:swap;` +
+    `src:url(data:font/woff2;base64,${buf.toString("base64")}) format('woff2');}\n`;
+}
 
 const result = await build({
   entryPoints: [join(root, "src/shell/main.ts")],
@@ -36,8 +57,8 @@ const html = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Subnet Workbench</title>
 <style>
-  /* V6A palette, self-contained. Font variables fall back to system
-     stacks: this file makes zero network requests by design. */
+${fontCss}  /* V6A palette, self-contained. Site fonts are embedded above as
+     base64: this file makes zero network requests by design. */
   :root {
     --color-void: #020509; --color-deep: #040a14; --color-panel: #030812;
     --color-blue: #0044dd; --color-glow: #1155ff; --color-bright: #4da6ff; --color-ice: #b0d8ff;
