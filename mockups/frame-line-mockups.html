@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subnet Workbench — frame line mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Saira:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --color-void: #020509; --color-deep: #040a14; --color-panel: #030812;
+  --color-blue: #0044dd; --color-glow: #1155ff; --color-bright: #4da6ff; --color-ice: #b0d8ff;
+  --color-teal: #00ffcc; --color-amber: #ffaa00;
+  --color-white: #eef6ff; --color-mid: #6699cc; --color-dim: #4477aa;
+  --bord: rgba(77,166,255,0.28); --bord-teal: rgba(0,255,204,0.36);
+  --font-display: 'Chakra Petch', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-body: 'Saira', sans-serif;
+}
+body { margin: 0; background: var(--color-void); padding: 48px 24px 120px; font-family: var(--font-body); }
+.wrap { max-width: 1100px; margin: 0 auto; }
+.mock-eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--color-teal); margin: 72px 0 6px; }
+.mock-eyebrow::before { content: "// "; color: var(--color-amber); }
+.mock-eyebrow:first-child { margin-top: 0; }
+.mock-title { font-family: var(--font-display); font-size: 1.25rem; color: var(--color-white); margin: 0 0 8px; }
+.mock-desc { font-size: 0.82rem; font-weight: 300; line-height: 1.7; color: var(--color-mid); max-width: 720px; margin: 0 0 22px; }
+
+/* ── Base = current shipped state (depth pass) ─────────────────── */
+.shell { position: relative; border: 1px solid var(--bord); background: var(--color-deep); color: var(--color-white); box-shadow: 0 0 60px rgba(17,85,255,0.10); }
+.corner { position: absolute; width: 18px; height: 18px; border: 1px solid var(--color-teal); opacity: 0.7; z-index: 2; pointer-events: none; }
+.c-tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.c-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+.c-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+.c-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+.tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid var(--bord); background: var(--color-panel); }
+.tab { position: relative; font-family: var(--font-display); font-size: 0.78rem; letter-spacing: 0.08em; color: #6666ff; padding: 10px 22px 12px; cursor: pointer; background: none; border: none; }
+.tabbg { position: absolute; inset: 0; transform: skewX(-12deg) translateY(6px); border: 1px solid rgba(17,85,255,0.35); border-bottom: none; transition: 0.15s; }
+.tablbl { position: relative; z-index: 1; }
+.tab.active { color: var(--color-white); }
+.tab.active .tabbg { transform: skewX(-12deg) translateY(0); border-color: rgba(17,85,255,0.75); background: rgba(17,85,255,0.12); }
+.bodyg { display: grid; grid-template-columns: 300px 1fr; }
+.left { padding: 22px 20px; border-right: 1px solid var(--bord); }
+.right { padding: 22px 24px; min-width: 0; background-image: linear-gradient(rgba(77,166,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(77,166,255,0.05) 1px, transparent 1px); background-size: 28px 28px; }
+.flabel { font-family: var(--font-mono); font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-dim); margin: 14px 0 6px; }
+.flabel:first-child { margin-top: 0; }
+.inp { width: 100%; box-sizing: border-box; background: var(--color-panel); border: 1px solid var(--bord); color: var(--color-ice); font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.7; padding: 10px 12px; }
+.btn { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-teal); background: rgba(0,255,204,0.06); border: 1px solid var(--bord-teal); padding: 6px 12px; cursor: pointer; margin-top: 12px; transition: 0.15s; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,255,204,0.15); }
+.footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid var(--bord); background: var(--color-panel); }
+.status { font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.16em; color: var(--color-dim); }
+.status b { color: var(--color-teal); font-weight: 400; }
+.ledger { display: flex; gap: 4px; margin-bottom: 14px; }
+.blk { border: 1px solid var(--bord-teal); background: rgba(0,255,204,0.05); padding: 8px 10px; font-family: var(--font-mono); box-shadow: 0 6px 18px rgba(0,0,0,0.45); transition: 0.15s; }
+.blk:hover { transform: translateY(-2px); border-color: var(--color-teal); }
+.blk .nm { font-size: 0.62rem; color: var(--color-white); }
+.blk .cd { font-size: 0.58rem; color: var(--color-teal); margin: 2px 0 6px; }
+.util { height: 3px; background: rgba(77,166,255,0.15); }
+.util i { display: block; height: 100%; background: var(--color-teal); }
+.blk .mt { font-size: 0.5rem; color: var(--color-dim); margin-top: 5px; }
+.freeb { border: 1px dashed var(--bord); background: none; box-shadow: none; }
+.freeb .cd { color: var(--color-dim); }
+.summary { font-family: var(--font-mono); font-size: 0.6rem; line-height: 1.8; color: var(--color-mid); }
+
+/* ── Variant A: Gradient Frame ─────────────────────────────────── */
+.vA .shell { border: 1px solid transparent; background: linear-gradient(var(--color-deep), var(--color-deep)) padding-box, linear-gradient(135deg, rgba(0,255,204,0.55), rgba(17,85,255,0.5) 35%, rgba(17,85,255,0.2) 65%, rgba(255,170,0,0.45)) border-box; }
+.vA .left { border-right: 1px solid transparent; border-image: linear-gradient(180deg, rgba(0,255,204,0.4), rgba(17,85,255,0.25) 40%, rgba(17,85,255,0.08)) 1; }
+.vA .tabs { border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, rgba(0,255,204,0.45), rgba(17,85,255,0.35) 50%, rgba(17,85,255,0.12)) 1; }
+.vA .footer { border-top: 1px solid transparent; border-image: linear-gradient(90deg, rgba(17,85,255,0.12), rgba(17,85,255,0.35) 50%, rgba(255,170,0,0.35)) 1; }
+
+/* ── Variant B: Signal Rails ───────────────────────────────────── */
+.vB .shell { border-color: rgba(77,166,255,0.45); }
+.vB .shell::before { content: ""; position: absolute; top: -1px; left: 24px; right: 24px; height: 2px; background: linear-gradient(90deg, transparent, var(--color-teal) 20%, rgba(17,85,255,0.9) 80%, transparent); z-index: 2; }
+.vB .shell::after { content: ""; position: absolute; bottom: -1px; left: 24px; right: 24px; height: 2px; background: linear-gradient(90deg, transparent, rgba(255,170,0,0.7) 30%, rgba(17,85,255,0.7) 70%, transparent); z-index: 2; }
+.vB .left { border-right: 1px solid rgba(77,166,255,0.45); }
+.vB .tabs { border-bottom: 1px solid rgba(77,166,255,0.45); }
+.vB .footer { border-top: 1px solid rgba(77,166,255,0.45); }
+
+/* ── Variant C: Lit Edges ──────────────────────────────────────── */
+.vC .shell { border-color: rgba(77,166,255,0.5); box-shadow: 0 0 60px rgba(17,85,255,0.10), 0 0 0 1px rgba(17,85,255,0.15), 0 0 22px rgba(17,85,255,0.28), inset 0 0 26px rgba(17,85,255,0.09); }
+.vC .left { border-right: 1px solid rgba(77,166,255,0.4); box-shadow: 1px 0 12px rgba(17,85,255,0.18); }
+.vC .tabs { border-bottom: 1px solid rgba(0,255,204,0.3); box-shadow: 0 1px 14px rgba(0,255,204,0.12); }
+.vC .footer { border-top: 1px solid rgba(0,255,204,0.3); box-shadow: 0 -1px 14px rgba(0,255,204,0.10); }
+.vC .corner { opacity: 1; box-shadow: 0 0 8px rgba(0,255,204,0.5); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mock-eyebrow">Frame line mockups</div>
+  <h1 class="mock-title" style="font-size:1.5rem">Three frame treatments over the shipped depth pass</h1>
+  <p class="mock-desc">Everything else is exactly what's live now — only the frame and divider lines change. Combinable as always.</p>
+
+  <!-- Template block generator via JS to keep the file honest/small -->
+  <div id="slots"></div>
+
+</div>
+<template id="shellT">
+  <div class="shell">
+    <span class="corner c-tl"></span><span class="corner c-tr"></span><span class="corner c-bl"></span><span class="corner c-br"></span>
+    <div class="tabs">
+      <button class="tab"><span class="tabbg"></span><span class="tablbl">Calculate</span></button>
+      <button class="tab"><span class="tabbg"></span><span class="tablbl">Overlap</span></button>
+      <button class="tab active"><span class="tabbg"></span><span class="tablbl">VLSM</span></button>
+      <button class="tab"><span class="tabbg"></span><span class="tablbl">Vendor Syntax</span></button>
+    </div>
+    <div class="bodyg">
+      <div class="left">
+        <div class="flabel">Supernet</div>
+        <input class="inp" value="10.0.0.0/24">
+        <div class="flabel">Requirements (one per line)</div>
+        <textarea class="inp" rows="5">Engineering, 100 hosts
+Sales: 50
+Printers, 20</textarea>
+        <button class="btn" style="color:var(--color-dim);background:transparent;border-color:var(--bord)">Clear</button>
+      </div>
+      <div class="right">
+        <div class="ledger">
+          <div class="blk" style="flex-grow:128"><div class="nm">Engineering</div><div class="cd">10.0.0.0/25</div><div class="util"><i style="width:79%"></i></div><div class="mt">100 of 126 hosts</div></div>
+          <div class="blk" style="flex-grow:64"><div class="nm">Sales</div><div class="cd">10.0.0.128/26</div><div class="util"><i style="width:81%"></i></div><div class="mt">50 of 62</div></div>
+          <div class="blk" style="flex-grow:32"><div class="nm">Printers</div><div class="cd">10.0.0.192/27</div><div class="util"><i style="width:67%"></i></div><div class="mt">20 of 30</div></div>
+          <div class="blk freeb" style="flex-grow:32"><div class="nm">&nbsp;</div><div class="cd">free /27</div><div class="mt">from 10.0.0.224</div></div>
+        </div>
+        <div class="summary">Allocated 224 of 256 addresses · stranded 34 usable hosts · free 32 addresses</div>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="status">MODE <b>VLSM</b> &nbsp;&middot;&nbsp; 3 SUBNETS HELD</div>
+      <button class="btn" style="margin-top:0;color:var(--color-dim);background:transparent;border-color:var(--bord)">Copy shareable link</button>
+    </div>
+  </div>
+</template>
+<script>
+const variants = [
+  ["vA", "Variant A", "Gradient Frame", "The outer border becomes a 135&deg; teal &#8594; blue &#8594; amber gradient (the piece you liked from Blueprint), and the inner lines follow suit: the column divider fades teal-to-blue top to bottom, the tab bar line sweeps teal from the left, the footer line warms toward amber on the right. Color carries direction."],
+  ["vB", "Signal Rails", "Signal Rails", "Borders brighten to a clearer blue, and the frame gets two 2px energy rails: a teal-to-blue rail across the top edge and an amber-to-blue return rail along the bottom, both fading out before the corners. Reads like a powered chassis."],
+  ["vC", "Lit Edges", "Lit Edges", "Line positions unchanged, but every line emits: the outer border gets a layered blue glow (out and inset), the column divider casts light into the output panel, tab and footer lines glow faint teal, and the corner brackets go full-opacity with a teal halo. Clarity through luminance rather than new colors."],
+];
+const slots = document.getElementById("slots");
+const t = document.getElementById("shellT");
+for (const [cls, eyebrow, title, desc] of variants) {
+  const section = document.createElement("div");
+  section.innerHTML = '<div class="mock-eyebrow">' + eyebrow + '</div><h2 class="mock-title">' + title + '</h2><p class="mock-desc">' + desc + '</p>';
+  const holder = document.createElement("div");
+  holder.className = cls;
+  holder.appendChild(t.content.cloneNode(true));
+  section.appendChild(holder);
+  slots.appendChild(section);
+}
+</script>
+</body>
+</html>
