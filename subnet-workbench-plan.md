@@ -135,6 +135,12 @@ Visual-first is the core identity, not decoration. Every mode has a hero visual.
 
 **Notes:** Visuals are v1 core, but they are not v1 first. See Step 1.
 
+**Treatments chosen 2026-07-22** (from `mockups/hero-visuals-mockups.html`, kept for revisiting):
+- Bit boundary view → **1A Ribbon**: one 32-bit row with octet gaps, amber boundary line
+- Prefix slider → **2A Splitting Bar**: slider over a single address bar, dashed ghost lines for the next split
+- Address-space map → **3B Spans**: one thin row per subnet under group headers, amber hatch band through conflict columns
+- VLSM diagram → **4B Block Ledger**: proportional flex cards with per-card utilization bars and a waste ledger
+
 ### Step 8: Page shell
 
 **What happens:** Single page with four visible mode tabs — Calculate / Overlap / VLSM / Vendor Syntax. Not a dropdown: visible options double as a statement of what the tool can do, the same reasoning applied to the CLI Reference Tool's category filter.
