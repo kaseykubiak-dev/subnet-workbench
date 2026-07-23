@@ -426,7 +426,7 @@ export const SHELL_CSS = `
 .swb-c-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
 .swb-c-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
 .swb-c-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
-.swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid rgba(77,166,255,0.45); background: var(--color-panel, #030812); }
+.swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid rgba(77,166,255,0.45); background: var(--color-panel, #030812); overflow: hidden; }
 .swb-tab { position: relative; font-family: var(--font-display, 'Chakra Petch', sans-serif); font-size: 0.78rem; letter-spacing: 0.08em; color: #6666ff; padding: 10px 22px 12px; cursor: pointer; background: none; border: none; }
 .swb-tabbg { position: absolute; inset: 0; transform: skewX(-12deg) translateY(6px); border: 1px solid rgba(17,85,255,0.35); border-bottom: none; transition: transform 0.15s, border-color 0.15s; }
 .swb-tablbl { position: relative; z-index: 1; }
