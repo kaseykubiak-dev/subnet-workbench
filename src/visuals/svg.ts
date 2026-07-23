@@ -23,8 +23,8 @@ export const COLOR = {
   teal: "var(--color-teal, #00ffcc)",
   amber: "var(--color-amber, #ffaa00)",
   white: "var(--color-white, #eef6ff)",
-  mid: "var(--color-mid, #6699cc)",
-  dim: "var(--color-dim, #4477aa)",
+  mid: "var(--color-mid, #9dbcdf)",
+  dim: "var(--color-dim, #7fa6cd)",
 } as const;
 
 /** Font stacks matching the site's next/font variables, with fallbacks. */

@@ -49,11 +49,11 @@ export function renderPrefixSplit(
 
   // Header: supernet on the left, split summary on the right.
   parts.push(
-    monoText(BAR_X, 34, cidr, { fill: COLOR.teal, "font-size": 13 }),
+    monoText(BAR_X, 34, cidr, { fill: COLOR.teal, "font-size": 16 }),
     monoText(BAR_X + BAR_W, 34, `-> ${count} x /${targetPrefix}`, {
       "text-anchor": "end",
       fill: COLOR.amber,
-      "font-size": 13,
+      "font-size": 16,
     })
   );
 
@@ -85,7 +85,7 @@ export function renderPrefixSplit(
             y: BAR_Y + BAR_H / 2 + 4,
             "text-anchor": "middle",
             "font-family": FONT.mono,
-            "font-size": 11,
+            "font-size": 15,
             fill: COLOR.white,
           },
           blockLabel(network, supernet.prefix)
@@ -132,7 +132,7 @@ export function renderPrefixSplit(
           y: BAR_Y + BAR_H / 2 + 4,
           "text-anchor": "middle",
           "font-family": FONT.mono,
-          "font-size": 11,
+          "font-size": 15,
           fill: COLOR.amber,
         },
         `+${count - shown} more`
@@ -146,7 +146,7 @@ export function renderPrefixSplit(
       BAR_X,
       BAR_Y + BAR_H + 30,
       `${blockAddresses.toLocaleString("en-US")} addresses per /${targetPrefix}`,
-      { fill: COLOR.dim, "font-size": 11 }
+      { fill: COLOR.dim, "font-size": 14 }
     )
   );
 

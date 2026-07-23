@@ -39,21 +39,21 @@ export const VLSM_LEDGER_CSS = `
 .swb-block-cidr { color: var(--color-teal, #00ffcc); font-size: 0.66rem; margin-top: 2px; white-space: nowrap; }
 .swb-util { height: 4px; margin-top: 8px; background: rgba(102, 153, 204, 0.2); }
 .swb-util-fill { height: 100%; background: var(--color-teal, #00ffcc); }
-.swb-block-meta { color: var(--color-mid, #6699cc); font-size: 0.6rem; margin-top: 6px; white-space: nowrap; }
+.swb-block-meta { color: var(--color-mid, #9dbcdf); font-size: 0.6rem; margin-top: 6px; white-space: nowrap; }
 .swb-block.swb-free {
   background: transparent;
   border: 1px dashed var(--bord, rgba(77, 166, 255, 0.28));
 }
-.swb-free .swb-block-label { color: var(--color-dim, #4477aa); }
-.swb-free .swb-block-cidr { color: var(--color-dim, #4477aa); }
+.swb-free .swb-block-label { color: var(--color-dim, #7fa6cd); }
+.swb-free .swb-block-cidr { color: var(--color-dim, #7fa6cd); }
 .swb-unallocated {
   margin-top: 10px; padding: 6px 10px; font-size: 0.66rem;
   color: var(--color-amber, #ffaa00);
   border-left: 2px solid var(--color-amber, #ffaa00);
   background: rgba(255, 170, 0, 0.06);
 }
-.swb-ledger-summary { margin-top: 12px; font-size: 0.66rem; color: var(--color-mid, #6699cc); letter-spacing: 0.06em; }
-.swb-ledger-empty { font-size: 0.7rem; color: var(--color-dim, #4477aa); }
+.swb-ledger-summary { margin-top: 12px; font-size: 0.66rem; color: var(--color-mid, #9dbcdf); letter-spacing: 0.06em; }
+.swb-ledger-empty { font-size: 0.7rem; color: var(--color-dim, #7fa6cd); }
 `.trim();
 
 /** Render the block ledger for a VLSM result. */

@@ -42,7 +42,7 @@ const html = `<!DOCTYPE html>
     --color-void: #020509; --color-deep: #040a14; --color-panel: #030812;
     --color-blue: #0044dd; --color-glow: #1155ff; --color-bright: #4da6ff; --color-ice: #b0d8ff;
     --color-teal: #00ffcc; --color-amber: #ffaa00;
-    --color-white: #eef6ff; --color-mid: #6699cc; --color-dim: #4477aa;
+    --color-white: #eef6ff; --color-mid: #9dbcdf; --color-dim: #7fa6cd;
     --bord: rgba(77,166,255,0.28); --bord-teal: rgba(0,255,204,0.36);
     --font-display: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
     --font-mono: 'IBM Plex Mono', 'Cascadia Code', Consolas, Menlo, monospace;
