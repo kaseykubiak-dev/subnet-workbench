@@ -30,7 +30,13 @@ import { renderSpaceMap } from "../visuals/spaceMap";
 import { VLSM_LEDGER_CSS, renderVlsmLedger } from "../visuals/vlsmLedger";
 import { COLOR, esc } from "../visuals/svg";
 import type { ShellState } from "./state";
-import { MODES, effectiveSplitTarget, heldSubnetCount } from "./state";
+import {
+  MODES,
+  calculateEntries,
+  effectiveSplitTarget,
+  heldSubnetCount,
+  selectedCalculateSubnet,
+} from "./state";
 
 // ---------------------------------------------------------------------------
 // Shared fragments
@@ -131,12 +137,57 @@ function fieldLabel(text: string): string {
 
 export function renderInputPanel(state: ShellState): string {
   switch (state.mode) {
-    case "calculate":
+    case "calculate": {
+      const entries = calculateEntries(state);
+      const rows = entries
+        .map((line, i) => {
+          const parsed = parseSubnetList(line);
+          const s = parsed.subnets[0];
+          const sel = i === state.calculateSelected ? " swb-sel" : "";
+          const idx = String(i + 1).padStart(2, "0");
+          if (s === undefined) {
+            return (
+              `<div class="swb-entry swb-entry-bad${sel}" data-action="select-entry" data-index="${i}">` +
+              `<span class="swb-entry-idx">${idx}</span>` +
+              `<span class="swb-entry-lbl">${esc(line)}</span>` +
+              `<button class="swb-entry-x" data-action="remove-entry" data-index="${i}" aria-label="Remove entry">&times;</button>` +
+              `</div>`
+            );
+          }
+          const cidr = `${numberToIp(s.network)}/${s.prefix}`;
+          return (
+            `<div class="swb-entry${sel}" data-action="select-entry" data-index="${i}">` +
+            `<span class="swb-entry-idx">${idx}</span>` +
+            `<span class="swb-entry-lbl">${esc(s.label ?? "")}</span>` +
+            `<span class="swb-entry-cidr">${esc(cidr)}</span>` +
+            `<button class="swb-entry-x" data-action="remove-entry" data-index="${i}" aria-label="Remove entry">&times;</button>` +
+            `</div>`
+          );
+        })
+        .join("");
+      const list =
+        entries.length > 0
+          ? fieldLabel(`Subnets · ${entries.length}`) +
+            `<div class="swb-entries">${rows}</div>`
+          : "";
+      const draftErrors =
+        state.calculateDraftError !== ""
+          ? state.calculateDraftError
+              .split("\n")
+              .map((l) => `<div class="swb-error">${esc(l)}</div>`)
+              .join("")
+          : "";
       return (
-        fieldLabel("Subnet input") +
-        textarea("calculateInput", state.calculateInput, 4, "192.168.1.0/26\nCIDR, mask, or slash-mask; label optional") +
-        `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
+        list +
+        fieldLabel("Add subnet") +
+        textarea("calculateDraft", state.calculateDraft, 2, "192.168.1.0/26 — label optional, Enter to add") +
+        draftErrors +
+        `<div class="swb-run">` +
+        `<button class="swb-btn" data-action="commit-draft">Add</button>` +
+        `<button class="swb-btn swb-ghost" data-action="clear-mode">Clear all</button>` +
+        `</div>`
       );
+    }
     case "overlap":
       return (
         fieldLabel("Subnet list (one per line)") +
@@ -174,23 +225,24 @@ export function renderInputPanel(state: ShellState): string {
 // ---------------------------------------------------------------------------
 
 function renderCalculateOutput(state: ShellState): string {
-  const { subnets, errors } = parseSubnetList(state.calculateInput);
-  const first = subnets[0];
-  if (first === undefined) {
-    return (
-      errorsBlock(errors) +
-      hint(
-        HINT_SVG_CALCULATE,
-        "<b>Waiting on a subnet.</b> Enter CIDR, mask, or slash-mask &mdash; you get the full derivation, the 32-bit view, and a draggable prefix split."
-      )
+  const entries = calculateEntries(state);
+  if (entries.length === 0) {
+    return hint(
+      HINT_SVG_CALCULATE,
+      "<b>Waiting on a subnet.</b> Enter CIDR, mask, or slash-mask &mdash; you get the full derivation, the 32-bit view, and a draggable prefix split. Add several and click between them."
     );
+  }
+  const first = selectedCalculateSubnet(state);
+  if (first === undefined) {
+    const line = entries[state.calculateSelected] ?? entries[0] ?? "";
+    const { errors } = parseSubnetList(line);
+    return errorsBlock(errors);
   }
   const result = calculate(first);
   const target = effectiveSplitTarget(state, first.prefix);
   const sliderDisabled = first.prefix === 32 ? " disabled" : "";
   const line = handoffLine(first);
   return (
-    errorsBlock(errors) +
     `<div class="swb-visual">${renderBitRibbon(first.address, first.prefix)}</div>` +
     `<div class="swb-split-head">` +
     `<span class="swb-field-label swb-inline">Prefix split</span>` +
@@ -401,6 +453,20 @@ export const SHELL_CSS = `
 .swb-inline { margin: 0; }
 .swb-slider { flex: 1; accent-color: var(--color-teal, #00ffcc); }
 .swb-split-val { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.72rem; color: var(--color-amber, #ffaa00); min-width: 34px; text-align: right; }
+.swb-entries { border: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); padding: 4px 2px; margin-bottom: 16px; }
+.swb-entry { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid rgba(77,166,255,0.12); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.swb-entry:last-child { border-bottom: none; }
+.swb-entry:hover { background: rgba(77,166,255,0.05); }
+.swb-entry.swb-sel { background: rgba(0,255,204,0.06); border-bottom-color: rgba(0,255,204,0.4); }
+.swb-entry-idx { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.58rem; color: var(--color-dim, #7fa6cd); }
+.swb-entry.swb-sel .swb-entry-idx { color: var(--color-amber, #ffaa00); }
+.swb-entry-lbl { font-size: 0.72rem; color: var(--color-white, #eef6ff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swb-entry-cidr { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.66rem; color: var(--color-mid, #9dbcdf); margin-left: auto; white-space: nowrap; }
+.swb-entry.swb-sel .swb-entry-cidr { color: var(--color-teal, #00ffcc); }
+.swb-entry-x { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.7rem; color: var(--color-dim, #7fa6cd); background: none; border: none; cursor: pointer; padding: 0 2px; }
+.swb-entry-x:hover { color: var(--color-amber, #ffaa00); }
+.swb-entry-bad .swb-entry-lbl { color: var(--color-amber, #ffaa00); }
+.swb-entry-bad .swb-entry-x { margin-left: auto; }
 .swb-pre { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.74rem; line-height: 1.9; color: var(--color-mid, #9dbcdf); white-space: pre; overflow-x: auto; margin: 0 0 10px; background: var(--color-panel, #030812); border: 1px solid rgba(77,166,255,0.2); border-left: 2px solid rgba(0,255,204,0.55); padding: 14px 16px; }
 .swb-hint { display: flex; gap: 16px; align-items: center; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.66rem; line-height: 1.9; color: var(--color-dim, #7fa6cd); border: 1px dashed var(--bord, rgba(77,166,255,0.28)); background: var(--color-deep, #040a14); padding: 16px 18px; }
 .swb-hint svg { flex-shrink: 0; }

@@ -61,11 +61,49 @@ describe("renderTabs", () => {
 });
 
 describe("renderInputPanel", () => {
-  it("calculate: exposes the field and a clear button", () => {
-    const html = renderInputPanel(withState({ calculateInput: "10.0.0.0/24" }));
-    expect(html).toContain('data-field="calculateInput"');
+  it("calculate: draft box, add, and clear-all buttons", () => {
+    const html = renderInputPanel(withState({ calculateDraft: "10.0.0.0/24" }));
+    expect(html).toContain('data-field="calculateDraft"');
     expect(html).toContain(">10.0.0.0/24</textarea>");
+    expect(html).toContain('data-action="commit-draft"');
     expect(html).toContain('data-action="clear-mode"');
+    expect(html).not.toContain("swb-entries");
+  });
+
+  it("calculate: renders committed entries with selection and remove buttons", () => {
+    const html = renderInputPanel(
+      withState({
+        calculateInput: "Mgmt: 10.10.0.0/24\n192.168.1.0/26",
+        calculateSelected: 1,
+      })
+    );
+    expect(html).toContain("Subnets · 2");
+    expect(html.match(/data-action="select-entry"/g)).toHaveLength(2);
+    expect(html.match(/data-action="remove-entry"/g)).toHaveLength(2);
+    expect(html.match(/swb-sel/g)).toHaveLength(1);
+    expect(html).toContain(
+      'class="swb-entry swb-sel" data-action="select-entry" data-index="1"'
+    );
+    expect(html).toContain("Mgmt");
+    expect(html).toContain("10.10.0.0/24");
+  });
+
+  it("calculate: flags invalid committed lines and escapes hostile labels", () => {
+    const html = renderInputPanel(
+      withState({ calculateInput: "banana\n<b>x</b>: 10.0.0.0/24" })
+    );
+    expect(html).toContain("swb-entry-bad");
+    expect(html).toContain("banana");
+    expect(html).not.toContain("<b>x</b>");
+    expect(html).toContain("&lt;b&gt;");
+  });
+
+  it("calculate: surfaces draft errors under the box", () => {
+    const html = renderInputPanel(
+      withState({ calculateDraftError: "pear —> not a subnet" })
+    );
+    expect(html).toContain("swb-error");
+    expect(html).toContain("pear");
   });
 
   it("vlsm: supernet, requirements, and headroom fields", () => {
@@ -119,10 +157,16 @@ describe("renderOutput / calculate", () => {
     expect(html).toMatch(/data-field="splitTarget"[^>]*disabled/);
   });
 
-  it("surfaces parse errors alongside good lines", () => {
-    const html = renderOutput(withState({ calculateInput: "banana\n10.0.0.0/24" }));
-    expect(html).toContain("swb-error");
-    expect(html).toContain('data-visual="bit-ribbon"');
+  it("shows the error for an invalid selected entry, the ribbon for a valid one", () => {
+    const bad = renderOutput(
+      withState({ calculateInput: "banana\n10.0.0.0/24", calculateSelected: 0 })
+    );
+    expect(bad).toContain("swb-error");
+    expect(bad).not.toContain('data-visual="bit-ribbon"');
+    const good = renderOutput(
+      withState({ calculateInput: "banana\n10.0.0.0/24", calculateSelected: 1 })
+    );
+    expect(good).toContain('data-visual="bit-ribbon"');
   });
 });
 

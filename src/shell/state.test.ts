@@ -2,14 +2,108 @@ import { describe, expect, it } from "vitest";
 
 import {
   addToOverlap,
+  calculateEntries,
+  commitCalculateDraft,
   effectiveSplitTarget,
   heldSubnetCount,
   initialState,
+  removeCalculateEntry,
+  selectCalculateEntry,
+  selectedCalculateSubnet,
   sendToVendor,
   setMode,
   useAsVlsmSupernet,
 } from "./state";
 import { clearCurrentMode } from "./app";
+
+describe("commitCalculateDraft", () => {
+  it("moves valid lines into the entry list and selects the last one", () => {
+    const s = commitCalculateDraft({
+      ...initialState,
+      calculateDraft: "Mgmt: 10.10.0.0/24\nLab: 192.168.1.0/26",
+    });
+    expect(calculateEntries(s)).toEqual([
+      "Mgmt: 10.10.0.0/24",
+      "Lab: 192.168.1.0/26",
+    ]);
+    expect(s.calculateSelected).toBe(1);
+    expect(s.calculateDraft).toBe("");
+    expect(s.calculateDraftError).toBe("");
+  });
+
+  it("keeps invalid lines in the draft with an error", () => {
+    const s = commitCalculateDraft({
+      ...initialState,
+      calculateDraft: "banana\n10.0.0.0/24",
+    });
+    expect(calculateEntries(s)).toEqual(["10.0.0.0/24"]);
+    expect(s.calculateDraft).toBe("banana");
+    expect(s.calculateDraftError).toContain("banana");
+  });
+
+  it("dedupes against existing entries and selects the original", () => {
+    const s = commitCalculateDraft({
+      ...initialState,
+      calculateInput: "10.0.0.0/24\n10.1.0.0/24",
+      calculateSelected: 1,
+      calculateDraft: "10.0.0.0/24",
+    });
+    expect(calculateEntries(s)).toEqual(["10.0.0.0/24", "10.1.0.0/24"]);
+    expect(s.calculateSelected).toBe(0);
+  });
+
+  it("is a no-op on an empty draft", () => {
+    const s = commitCalculateDraft({ ...initialState, calculateDraft: "  " });
+    expect(s).toEqual({ ...initialState, calculateDraft: "  " });
+  });
+});
+
+describe("selectCalculateEntry / selectedCalculateSubnet", () => {
+  const base = {
+    ...initialState,
+    calculateInput: "A: 10.0.0.0/24\nB: 10.1.0.0/25",
+  };
+
+  it("selects within bounds and clamps outside them", () => {
+    expect(selectCalculateEntry(base, 1).calculateSelected).toBe(1);
+    expect(selectCalculateEntry(base, 99).calculateSelected).toBe(1);
+    expect(selectCalculateEntry(base, -3).calculateSelected).toBe(0);
+  });
+
+  it("resolves the selected subnet", () => {
+    const s = selectCalculateEntry(base, 1);
+    expect(selectedCalculateSubnet(s)?.prefix).toBe(25);
+    expect(selectedCalculateSubnet(initialState)).toBeUndefined();
+  });
+});
+
+describe("removeCalculateEntry", () => {
+  const base = {
+    ...initialState,
+    calculateInput: "A: 10.0.0.0/24\nB: 10.1.0.0/24\nC: 10.2.0.0/24",
+    calculateSelected: 1,
+  };
+
+  it("removes the entry and shifts selection left when needed", () => {
+    const s = removeCalculateEntry(base, 0);
+    expect(calculateEntries(s)).toEqual(["B: 10.1.0.0/24", "C: 10.2.0.0/24"]);
+    expect(s.calculateSelected).toBe(0);
+  });
+
+  it("keeps selection stable when removing after it", () => {
+    const s = removeCalculateEntry(base, 2);
+    expect(s.calculateSelected).toBe(1);
+  });
+
+  it("clamps selection when removing the selected last entry", () => {
+    const s = removeCalculateEntry({ ...base, calculateSelected: 2 }, 2);
+    expect(s.calculateSelected).toBe(1);
+  });
+
+  it("ignores out-of-range indexes", () => {
+    expect(removeCalculateEntry(base, 9)).toEqual(base);
+  });
+});
 
 describe("setMode", () => {
   it("switches mode and keeps every input", () => {

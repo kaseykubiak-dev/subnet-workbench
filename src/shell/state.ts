@@ -22,8 +22,14 @@ export const MODES: { id: Mode; label: string }[] = [
 
 export interface ShellState {
   mode: Mode;
-  /** Calculate: single subnet input. */
+  /** Calculate: committed entries, one subnet line each. */
   calculateInput: string;
+  /** Calculate: index of the selected entry. */
+  calculateSelected: number;
+  /** Calculate: uncommitted content of the add-subnet box. */
+  calculateDraft: string;
+  /** Calculate: lines that failed the last commit (newline-joined messages). */
+  calculateDraftError: string;
   /** Calculate: prefix-slider target; null = derived default (prefix+2). */
   splitTarget: number | null;
   /** Overlap: one subnet per line. */
@@ -42,6 +48,9 @@ export interface ShellState {
 export const initialState: ShellState = {
   mode: "calculate",
   calculateInput: "",
+  calculateSelected: 0,
+  calculateDraft: "",
+  calculateDraftError: "",
   splitTarget: null,
   overlapInput: "",
   vlsmSupernetInput: "",
@@ -87,6 +96,79 @@ export function sendToVendor(state: ShellState, line: string): ShellState {
     ...state,
     mode: "vendor",
     vendorInput: appendLine(state.vendorInput, line),
+  };
+}
+
+/** Calculate entries: the committed lines, trimmed, empties dropped. */
+export function calculateEntries(state: ShellState): string[] {
+  return state.calculateInput
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+}
+
+/** The parsed subnet for the selected Calculate entry, if valid. */
+export function selectedCalculateSubnet(state: ShellState) {
+  const entries = calculateEntries(state);
+  const line = entries[clampSelection(state.calculateSelected, entries.length)];
+  if (line === undefined) return undefined;
+  return parseSubnetList(line).subnets[0];
+}
+
+function clampSelection(index: number, count: number): number {
+  if (count === 0) return 0;
+  return Math.min(Math.max(0, index), count - 1);
+}
+
+/**
+ * Commit the draft box: valid lines join the entry list (deduped), invalid
+ * lines stay in the draft with their errors surfaced. Selection moves to
+ * the last entry added.
+ */
+export function commitCalculateDraft(state: ShellState): ShellState {
+  const { subnets, errors } = parseSubnetList(state.calculateDraft);
+  if (subnets.length === 0 && errors.length === 0) return state;
+  let input = state.calculateInput;
+  for (const s of subnets) {
+    input = appendLine(input, s.raw);
+  }
+  const entries = input
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const lastAdded = subnets[subnets.length - 1];
+  const selected =
+    lastAdded !== undefined
+      ? Math.max(0, entries.indexOf(lastAdded.raw.trim()))
+      : clampSelection(state.calculateSelected, entries.length);
+  return {
+    ...state,
+    calculateInput: entries.join("\n"),
+    calculateSelected: selected,
+    calculateDraft: errors.map((e) => e.raw).join("\n"),
+    calculateDraftError: errors
+      .map((e) => `${e.raw} —> ${e.message}`)
+      .join("\n"),
+  };
+}
+
+/** Select a Calculate entry by index (clamped). */
+export function selectCalculateEntry(state: ShellState, index: number): ShellState {
+  const count = calculateEntries(state).length;
+  return { ...state, calculateSelected: clampSelection(index, count) };
+}
+
+/** Remove a Calculate entry; selection follows sensibly. */
+export function removeCalculateEntry(state: ShellState, index: number): ShellState {
+  const entries = calculateEntries(state);
+  if (index < 0 || index >= entries.length) return state;
+  entries.splice(index, 1);
+  let selected = state.calculateSelected;
+  if (index < selected) selected -= 1;
+  return {
+    ...state,
+    calculateInput: entries.join("\n"),
+    calculateSelected: clampSelection(selected, entries.length),
   };
 }
 

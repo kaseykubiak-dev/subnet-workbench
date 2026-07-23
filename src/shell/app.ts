@@ -14,8 +14,12 @@ import { renderPrefixSplit } from "../visuals/prefixSplit";
 import type { Mode, ShellState } from "./state";
 import {
   addToOverlap,
+  commitCalculateDraft,
   effectiveSplitTarget,
   initialState,
+  removeCalculateEntry,
+  selectCalculateEntry,
+  selectedCalculateSubnet,
   sendToVendor,
   setMode,
   useAsVlsmSupernet,
@@ -55,9 +59,18 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
     if (foot !== null) foot.innerHTML = renderFooter(state);
   };
 
+  /** After a full rerender, put focus back in the add-subnet box. */
+  const refocusDraft = (): void => {
+    const box = root.querySelector<HTMLTextAreaElement>('[data-field="calculateDraft"]');
+    if (box !== null) {
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    }
+  };
+
   /** Slider drag: swap only the split visual so the slider element survives. */
   const rerenderSplitVisual = (): void => {
-    const first = parseSubnetList(state.calculateInput).subnets[0];
+    const first = selectedCalculateSubnet(state);
     if (first === undefined) return;
     const target = effectiveSplitTarget(state, first.prefix);
     const visual = root.querySelector("#swb-split-visual");
@@ -93,16 +106,35 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       rerenderResults();
       return;
     }
+    if (el instanceof HTMLTextAreaElement && field === "calculateDraft") {
+      // Draft typing never re-renders: the output tracks committed entries.
+      state = { ...state, calculateDraft: el.value };
+      return;
+    }
     if (
       el instanceof HTMLTextAreaElement &&
-      (field === "calculateInput" ||
-        field === "overlapInput" ||
+      (field === "overlapInput" ||
         field === "vlsmSupernetInput" ||
         field === "vlsmRequirementsInput" ||
         field === "vendorInput")
     ) {
       state = { ...state, [field]: el.value };
       rerenderResults();
+    }
+  });
+
+  root.addEventListener("keydown", (event) => {
+    const el = event.target;
+    if (
+      el instanceof HTMLTextAreaElement &&
+      el.dataset["field"] === "calculateDraft" &&
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      state = commitCalculateDraft(state);
+      rerenderFull();
+      refocusDraft();
     }
   });
 
@@ -119,6 +151,19 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
         break;
       case "clear-mode":
         state = clearCurrentMode(state);
+        rerenderFull();
+        break;
+      case "commit-draft":
+        state = commitCalculateDraft(state);
+        rerenderFull();
+        refocusDraft();
+        break;
+      case "select-entry":
+        state = selectCalculateEntry(state, Number(el.dataset["index"]));
+        rerenderFull();
+        break;
+      case "remove-entry":
+        state = removeCalculateEntry(state, Number(el.dataset["index"]));
         rerenderFull();
         break;
       case "handoff-overlap":
@@ -188,7 +233,14 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
 export function clearCurrentMode(state: ShellState): ShellState {
   switch (state.mode) {
     case "calculate":
-      return { ...state, calculateInput: "", splitTarget: null };
+      return {
+        ...state,
+        calculateInput: "",
+        calculateSelected: 0,
+        calculateDraft: "",
+        calculateDraftError: "",
+        splitTarget: null,
+      };
     case "overlap":
       return { ...state, overlapInput: "" };
     case "vlsm":

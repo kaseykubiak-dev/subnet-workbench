@@ -24,6 +24,7 @@ type SharePayload = { v: number } & Partial<
     ShellState,
     | "mode"
     | "calculateInput"
+    | "calculateSelected"
     | "splitTarget"
     | "overlapInput"
     | "vlsmSupernetInput"
@@ -37,6 +38,7 @@ type SharePayload = { v: number } & Partial<
 const SHARE_KEYS = [
   "mode",
   "calculateInput",
+  "calculateSelected",
   "splitTarget",
   "overlapInput",
   "vlsmSupernetInput",
@@ -119,7 +121,7 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
   ] as const) {
     if (typeof raw[key] === "string") out[key] = raw[key];
   }
-  for (const key of ["splitTarget", "vlsmHeadroom"] as const) {
+  for (const key of ["calculateSelected", "splitTarget", "vlsmHeadroom"] as const) {
     if (typeof raw[key] === "number" && Number.isFinite(raw[key])) {
       out[key] = raw[key];
     }
