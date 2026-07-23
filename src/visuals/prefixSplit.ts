@@ -2,10 +2,9 @@
  * Hero visual 2A "Splitting Bar": the prefix-slider view.
  *
  * A single horizontal bar representing the supernet, divided into the blocks
- * a target prefix produces. Alternating fills keep adjacent blocks distinct;
- * dashed ghost lines mark where the NEXT split (target+1) would cut each
- * block. The slider control itself is page-shell UI; this renders the bar
- * for a given (supernet, targetPrefix) pair. Pure function: SVG string out.
+ * a target prefix produces. Alternating fills keep adjacent blocks distinct.
+ * The slider control itself is page-shell UI; this renders the bar for a
+ * given (supernet, targetPrefix) pair. Pure function: SVG string out.
  *
  * Blocks are capped at MAX_BLOCKS: beyond that, 63 real blocks render and a
  * final cell summarizes the remainder ("+k more").
@@ -90,21 +89,6 @@ export function renderPrefixSplit(
           },
           blockLabel(network, supernet.prefix)
         )
-      );
-    }
-    // Dashed ghost line at the block midpoint: where target+1 would cut.
-    if (targetPrefix < 32) {
-      parts.push(
-        el("line", {
-          x1: x + blockW / 2,
-          y1: BAR_Y + 3,
-          x2: x + blockW / 2,
-          y2: BAR_Y + BAR_H - 3,
-          stroke: COLOR.amber,
-          "stroke-opacity": 0.45,
-          "stroke-dasharray": "3 4",
-          "data-role": "ghost",
-        })
       );
     }
   }

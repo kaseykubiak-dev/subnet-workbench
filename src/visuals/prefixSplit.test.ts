@@ -54,8 +54,8 @@ describe("renderPrefixSplit", () => {
     expect(svg).toContain("-&gt; 4 x /26");
   });
 
-  it("draws a ghost line per block for the next split", () => {
-    expect(count(svg, `data-role="ghost"`)).toBe(4);
+  it("keeps block interiors clean (no ghost divider lines)", () => {
+    expect(count(svg, `data-role="ghost"`)).toBe(0);
   });
 
   it("reports the per-block address count", () => {
@@ -66,11 +66,6 @@ describe("renderPrefixSplit", () => {
     const big = renderPrefixSplit(subnet("10.0.0.0", 8), 16);
     expect(count(big, "data-block=")).toBe(MAX_BLOCKS - 1);
     expect(big).toContain(`+${256 - (MAX_BLOCKS - 1)} more`);
-  });
-
-  it("omits ghost lines when the target is /32", () => {
-    const tiny = renderPrefixSplit(subnet("10.0.0.0", 30), 32);
-    expect(count(tiny, `data-role="ghost"`)).toBe(0);
   });
 
   it("handles the no-op split (target equals supernet prefix)", () => {
