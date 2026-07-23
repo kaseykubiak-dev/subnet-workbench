@@ -449,6 +449,10 @@ export const SHELL_CSS = `
 .swb-ghost:hover { color: var(--color-mid, #9dbcdf); background: rgba(77,166,255,0.06); }
 .swb-visual { margin-bottom: 16px; }
 .swb-visual svg { display: block; width: 100%; height: auto; }
+.swb-split-hdr-hover { display: none; }
+.swb-split-block:hover .swb-split-hdr-hover { display: block; }
+.swb-split-block:hover rect { fill-opacity: 0.3; stroke-opacity: 0.9; }
+svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main { display: none; }
 .swb-split-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
 .swb-inline { margin: 0; }
 .swb-slider { flex: 1; accent-color: var(--color-teal, #00ffcc); }

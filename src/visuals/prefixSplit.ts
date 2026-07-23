@@ -46,9 +46,15 @@ export function renderPrefixSplit(
   const cidr = `${numberToIp(supernet.network)}/${supernet.prefix}`;
   const parts: string[] = [];
 
-  // Header: supernet on the left, split summary on the right.
+  // Header: supernet on the left, split summary on the right. Hovering a
+  // block swaps the left header for that block's CIDR (CSS-driven; each
+  // block group carries its own hidden header copy).
   parts.push(
-    monoText(BAR_X, 34, cidr, { fill: COLOR.teal, "font-size": 16 }),
+    monoText(BAR_X, 34, cidr, {
+      class: "swb-split-hdr-main",
+      fill: COLOR.teal,
+      "font-size": 16,
+    }),
     monoText(BAR_X + BAR_W, 34, `-> ${count} x /${targetPrefix}`, {
       "text-anchor": "end",
       fill: COLOR.amber,
@@ -62,7 +68,7 @@ export function renderPrefixSplit(
   for (let i = 0; i < shown; i++) {
     const x = BAR_X + i * blockW;
     const network = (supernet.network + i * blockAddresses) >>> 0;
-    parts.push(
+    const children: string[] = [
       el("rect", {
         x,
         y: BAR_Y,
@@ -73,10 +79,10 @@ export function renderPrefixSplit(
         stroke: COLOR.teal,
         "stroke-opacity": 0.4,
         "data-block": numberToIp(network),
-      })
-    );
+      }),
+    ];
     if (showLabels) {
-      parts.push(
+      children.push(
         textEl(
           "text",
           {
@@ -91,6 +97,15 @@ export function renderPrefixSplit(
         )
       );
     }
+    // Hidden header copy for this block, revealed on hover via CSS.
+    children.push(
+      monoText(BAR_X, 34, `${numberToIp(network)}/${targetPrefix}`, {
+        class: "swb-split-hdr-hover",
+        fill: COLOR.teal,
+        "font-size": 16,
+      })
+    );
+    parts.push(el("g", { class: "swb-split-block" }, ...children));
   }
 
   // Truncation cell.

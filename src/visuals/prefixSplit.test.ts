@@ -58,6 +58,15 @@ describe("renderPrefixSplit", () => {
     expect(count(svg, `data-role="ghost"`)).toBe(0);
   });
 
+  it("wraps each block in a hover group with its own header copy", () => {
+    expect(count(svg, `class="swb-split-block"`)).toBe(4);
+    expect(count(svg, `class="swb-split-hdr-hover"`)).toBe(4);
+    expect(count(svg, `class="swb-split-hdr-main"`)).toBe(1);
+    for (const cidr of ["10.0.0.64/26", "10.0.0.128/26", "10.0.0.192/26"]) {
+      expect(svg).toContain(`>${cidr}</text>`);
+    }
+  });
+
   it("reports the per-block address count", () => {
     expect(svg).toContain("64 addresses per /26");
   });
