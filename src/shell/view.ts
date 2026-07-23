@@ -366,13 +366,15 @@ export function renderShell(state: ShellState): string {
 // ---------------------------------------------------------------------------
 
 export const SHELL_CSS = `
-.swb-app { position: relative; border: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-deep, #040a14); font-family: var(--font-body, 'Saira', sans-serif); color: var(--color-white, #eef6ff); box-shadow: 0 0 60px rgba(17,85,255,0.10); }
+.swb-app { position: relative; border: 1px solid rgba(77,166,255,0.45); background: var(--color-deep, #040a14); font-family: var(--font-body, 'Saira', sans-serif); color: var(--color-white, #eef6ff); box-shadow: 0 0 60px rgba(17,85,255,0.10); }
+.swb-app::before { content: ""; position: absolute; top: -1px; left: 24px; right: 24px; height: 2px; background: linear-gradient(90deg, transparent, var(--color-teal, #00ffcc) 20%, rgba(17,85,255,0.9) 80%, transparent); z-index: 2; pointer-events: none; }
+.swb-app::after { content: ""; position: absolute; bottom: -1px; left: 24px; right: 24px; height: 2px; background: linear-gradient(90deg, transparent, var(--color-teal, #00ffcc) 20%, rgba(17,85,255,0.9) 80%, transparent); z-index: 2; pointer-events: none; }
 .swb-corner { position: absolute; width: 18px; height: 18px; border: 1px solid var(--color-teal, #00ffcc); opacity: 0.7; z-index: 2; pointer-events: none; }
 .swb-c-tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
 .swb-c-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
 .swb-c-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
 .swb-c-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
-.swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); }
+.swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid rgba(77,166,255,0.45); background: var(--color-panel, #030812); }
 .swb-tab { position: relative; font-family: var(--font-display, 'Chakra Petch', sans-serif); font-size: 0.78rem; letter-spacing: 0.08em; color: #6666ff; padding: 10px 22px 12px; cursor: pointer; background: none; border: none; }
 .swb-tabbg { position: absolute; inset: 0; transform: skewX(-12deg) translateY(6px); border: 1px solid rgba(17,85,255,0.35); border-bottom: none; transition: transform 0.15s, border-color 0.15s; }
 .swb-tablbl { position: relative; z-index: 1; }
@@ -380,7 +382,7 @@ export const SHELL_CSS = `
 .swb-tab.swb-active { color: var(--color-white, #eef6ff); }
 .swb-tab.swb-active .swb-tabbg { transform: skewX(-12deg) translateY(0); border-color: rgba(17,85,255,0.75); background: rgba(17,85,255,0.12); }
 .swb-body { display: grid; grid-template-columns: 340px 1fr; }
-.swb-left { padding: 22px 20px; border-right: 1px solid var(--bord, rgba(77,166,255,0.28)); }
+.swb-left { padding: 22px 20px; border-right: 1px solid rgba(77,166,255,0.45); }
 .swb-right { padding: 22px 24px; min-width: 0; background-image: linear-gradient(rgba(77,166,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(77,166,255,0.05) 1px, transparent 1px); background-size: 28px 28px; }
 .swb-field-label { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-dim, #4477aa); margin: 14px 0 6px; }
 .swb-field-label:first-child { margin-top: 0; }
@@ -407,7 +409,7 @@ export const SHELL_CSS = `
 .swb-errors { margin-bottom: 12px; }
 .swb-error { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.62rem; line-height: 1.8; color: var(--color-amber, #ffaa00); border-left: 2px solid var(--color-amber, #ffaa00); background: rgba(255,170,0,0.06); padding: 4px 10px; margin-bottom: 4px; }
 .swb-handoff { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(77,166,255,0.15); }
-.swb-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); }
+.swb-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid rgba(77,166,255,0.45); background: var(--color-panel, #030812); }
 .swb-status { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.58rem; letter-spacing: 0.16em; color: var(--color-dim, #4477aa); }
 .swb-status b { color: var(--color-teal, #00ffcc); font-weight: 400; }
 .swb-vendor-subnet { margin-bottom: 22px; }
@@ -419,7 +421,7 @@ export const SHELL_CSS = `
 .swb-note { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.58rem; line-height: 1.7; color: var(--color-dim, #4477aa); padding: 6px 12px 10px; }
 @media (max-width: 768px) {
   .swb-body { grid-template-columns: 1fr; }
-  .swb-left { border-right: none; border-bottom: 1px solid var(--bord, rgba(77,166,255,0.28)); }
+  .swb-left { border-right: none; border-bottom: 1px solid rgba(77,166,255,0.45); }
 }
 ${VLSM_LEDGER_CSS}
 `.trim();
