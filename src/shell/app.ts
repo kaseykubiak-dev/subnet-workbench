@@ -10,6 +10,7 @@
 
 import { parseSubnetList } from "../engine/parse";
 import { allocationCidr, allocateVlsm, parseRequirementList, requirementName } from "../modes/vlsm";
+import { renderBitRibbon } from "../visuals/bitRibbon";
 import { renderPrefixSplit } from "../visuals/prefixSplit";
 import type { Mode, ShellState } from "./state";
 import {
@@ -68,11 +69,15 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
     }
   };
 
-  /** Slider drag: swap only the split visual so the slider element survives. */
+  /** Slider drag: swap only the visuals so the slider element survives. */
   const rerenderSplitVisual = (): void => {
     const first = selectedCalculateSubnet(state);
     if (first === undefined) return;
     const target = effectiveSplitTarget(state, first.prefix);
+    const ribbon = root.querySelector("#swb-ribbon-visual");
+    if (ribbon !== null) {
+      ribbon.innerHTML = renderBitRibbon(first.address, first.prefix, target);
+    }
     const visual = root.querySelector("#swb-split-visual");
     if (visual !== null) {
       visual.innerHTML = renderPrefixSplit(

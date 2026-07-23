@@ -29,8 +29,18 @@ export function boundaryX(prefix: number): number {
   return bitX(prefix) - 2;
 }
 
-/** Render the bit ribbon for an address and prefix. */
-export function renderBitRibbon(address: number, prefix: number): string {
+/**
+ * Render the bit ribbon for an address and prefix.
+ *
+ * When `splitTarget` is past the prefix, a teal caret marker with a thin
+ * drop line shows where the prefix-split boundary falls among the bits;
+ * it tracks the split slider as the user drags.
+ */
+export function renderBitRibbon(
+  address: number,
+  prefix: number,
+  splitTarget?: number
+): string {
   const addr = address >>> 0;
   const ip = numberToIp(addr);
   const parts: string[] = [];
@@ -100,6 +110,34 @@ export function renderBitRibbon(address: number, prefix: number): string {
       "font-size": 12,
     })
   );
+
+  // Teal caret marker for the split target (only once it passes the mask).
+  if (splitTarget !== undefined && splitTarget > prefix && splitTarget <= 32) {
+    const sx = boundaryX(splitTarget);
+    parts.push(
+      el("path", {
+        d: `M ${sx - 6} ${Y0 - 18} L ${sx + 6} ${Y0 - 18} L ${sx} ${Y0 - 8} Z`,
+        fill: COLOR.teal,
+        "data-role": "split-marker",
+      }),
+      el("line", {
+        x1: sx,
+        y1: Y0 - 8,
+        x2: sx,
+        y2: Y0 + CELL_H + 10,
+        stroke: COLOR.teal,
+        "stroke-width": 1.5,
+        "stroke-opacity": 0.8,
+        "data-role": "split-marker",
+      }),
+      monoText(sx, Y0 - 26, `/${splitTarget}`, {
+        "text-anchor": "middle",
+        fill: COLOR.teal,
+        "font-size": 12,
+        "data-role": "split-marker",
+      })
+    );
+  }
 
   // NETWORK / HOST brackets under the row.
   const bktY = Y0 + CELL_H + 26;

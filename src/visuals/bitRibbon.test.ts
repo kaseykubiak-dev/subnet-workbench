@@ -79,3 +79,29 @@ describe("renderBitRibbon", () => {
     expect(svg).toContain(`data-visual="bit-ribbon"`);
   });
 });
+
+describe("split-target caret marker", () => {
+  it("draws the caret, drop line, and tag at the target boundary", () => {
+    const svg = renderBitRibbon(addr("10.0.0.0"), 24, 28);
+    expect(count(svg, `data-role="split-marker"`)).toBe(3);
+    expect(svg).toContain(`>/28</text>`);
+    // Drop line lands on the /28 boundary x.
+    expect(svg).toContain(`x1="${boundaryX(28)}"`);
+  });
+
+  it("omits the marker when the target equals the prefix", () => {
+    expect(renderBitRibbon(addr("10.0.0.0"), 24, 24)).not.toContain(
+      "split-marker"
+    );
+  });
+
+  it("omits the marker when no target is given", () => {
+    expect(renderBitRibbon(addr("10.0.0.0"), 24)).not.toContain("split-marker");
+  });
+
+  it("clamps out-of-range targets away", () => {
+    expect(renderBitRibbon(addr("10.0.0.0"), 24, 33)).not.toContain(
+      "split-marker"
+    );
+  });
+});

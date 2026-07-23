@@ -141,6 +141,9 @@ describe("renderOutput / calculate", () => {
   it("renders ribbon, split slider, text, and hand-off buttons", () => {
     const html = renderOutput(withState({ calculateInput: "Lab: 192.168.1.10/26" }));
     expect(html).toContain('data-visual="bit-ribbon"');
+    expect(html).toContain('id="swb-ribbon-visual"');
+    // Default split target (/28) shows the caret marker on the ribbon.
+    expect(html).toContain('data-role="split-marker"');
     expect(html).toContain('data-field="splitTarget"');
     expect(html).toContain('min="26"');
     expect(html).toContain('id="swb-split-val"');

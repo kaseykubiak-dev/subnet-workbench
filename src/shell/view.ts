@@ -243,7 +243,7 @@ function renderCalculateOutput(state: ShellState): string {
   const sliderDisabled = first.prefix === 32 ? " disabled" : "";
   const line = handoffLine(first);
   return (
-    `<div class="swb-visual">${renderBitRibbon(first.address, first.prefix)}</div>` +
+    `<div class="swb-visual" id="swb-ribbon-visual">${renderBitRibbon(first.address, first.prefix, target)}</div>` +
     `<div class="swb-split-head">` +
     `<span class="swb-field-label swb-inline">Prefix split</span>` +
     `<input class="swb-slider" data-field="splitTarget" type="range" min="${first.prefix}" max="32" value="${target}"${sliderDisabled}>` +
