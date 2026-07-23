@@ -27,7 +27,10 @@ export const VLSM_LEDGER_CSS = `
   flex-basis: 0; min-width: 56px; padding: 8px 10px; overflow: hidden;
   background: rgba(0, 255, 204, 0.06);
   border: 1px solid var(--bord-teal, rgba(0, 255, 204, 0.36));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s, border-color 0.15s;
 }
+.swb-block:hover { transform: translateY(-2px); border-color: var(--color-teal, #00ffcc); }
 .swb-block-label {
   color: var(--color-white, #eef6ff); font-size: 0.7rem;
   letter-spacing: 0.08em; text-transform: uppercase;

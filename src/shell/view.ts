@@ -28,7 +28,7 @@ import { renderBitRibbon } from "../visuals/bitRibbon";
 import { renderPrefixSplit } from "../visuals/prefixSplit";
 import { renderSpaceMap } from "../visuals/spaceMap";
 import { VLSM_LEDGER_CSS, renderVlsmLedger } from "../visuals/vlsmLedger";
-import { esc } from "../visuals/svg";
+import { COLOR, esc } from "../visuals/svg";
 import type { ShellState } from "./state";
 import { MODES, effectiveSplitTarget, heldSubnetCount } from "./state";
 
@@ -57,9 +57,54 @@ function pre(text: string): string {
   return `<pre class="swb-pre">${esc(text)}</pre>`;
 }
 
-function hint(text: string): string {
-  return `<div class="swb-hint">${esc(text)}</div>`;
+/**
+ * Empty-state hint: a small schematic SVG beside mono text (chosen
+ * 2026-07-22 from mockups/shell-polish-mockups.html, piece 1). Both
+ * arguments are trusted static markup built in this module — never route
+ * user input through here.
+ */
+function hint(svg: string, body: string): string {
+  return `<div class="swb-hint">${svg}<p>${body}</p></div>`;
 }
+
+const HINT_SVG_CALCULATE =
+  `<svg width="90" height="64" viewBox="0 0 90 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+  `<rect x="2" y="24" width="9" height="16" fill="${COLOR.teal}" fill-opacity="0.16" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="13" y="24" width="9" height="16" fill="${COLOR.teal}" fill-opacity="0.16" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="24" y="24" width="9" height="16" fill="${COLOR.teal}" fill-opacity="0.16" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="35" y="24" width="9" height="16" fill="${COLOR.teal}" fill-opacity="0.16" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="46" y="24" width="9" height="16" fill="${COLOR.teal}" fill-opacity="0.16" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="59" y="24" width="9" height="16" fill="${COLOR.blue}" fill-opacity="0.12" stroke="${COLOR.dim}" stroke-opacity="0.6"/>` +
+  `<rect x="70" y="24" width="9" height="16" fill="${COLOR.blue}" fill-opacity="0.12" stroke="${COLOR.dim}" stroke-opacity="0.6"/>` +
+  `<rect x="81" y="24" width="9" height="16" fill="${COLOR.blue}" fill-opacity="0.12" stroke="${COLOR.dim}" stroke-opacity="0.6"/>` +
+  `<line x1="57" y1="16" x2="57" y2="48" stroke="${COLOR.amber}" stroke-dasharray="3 3"/>` +
+  `</svg>`;
+
+const HINT_SVG_OVERLAP =
+  `<svg width="90" height="64" viewBox="0 0 90 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+  `<rect x="2" y="14" width="54" height="14" fill="${COLOR.teal}" fill-opacity="0.12" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="34" y="36" width="42" height="14" fill="${COLOR.teal}" fill-opacity="0.12" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<rect x="34" y="14" width="22" height="36" fill="${COLOR.amber}" fill-opacity="0.14" stroke="${COLOR.amber}" stroke-dasharray="3 3"/>` +
+  `</svg>`;
+
+const HINT_SVG_VLSM =
+  `<svg width="90" height="64" viewBox="0 0 90 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+  `<rect x="2" y="8" width="86" height="18" fill="none" stroke="${COLOR.dim}" stroke-dasharray="4 3"/>` +
+  `<rect x="2" y="38" width="40" height="18" fill="${COLOR.teal}" fill-opacity="0.12" stroke="${COLOR.teal}"/>` +
+  `<rect x="46" y="38" width="22" height="18" fill="${COLOR.teal}" fill-opacity="0.08" stroke="${COLOR.teal}" stroke-opacity="0.6"/>` +
+  `<rect x="72" y="38" width="16" height="18" fill="none" stroke="${COLOR.amber}" stroke-dasharray="3 3"/>` +
+  `<line x1="22" y1="26" x2="22" y2="38" stroke="${COLOR.dim}"/>` +
+  `<line x1="57" y1="26" x2="57" y2="38" stroke="${COLOR.dim}"/>` +
+  `</svg>`;
+
+const HINT_SVG_VENDOR =
+  `<svg width="90" height="64" viewBox="0 0 90 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+  `<rect x="2" y="6" width="86" height="52" fill="none" stroke="${COLOR.dim}" stroke-opacity="0.6"/>` +
+  `<path d="M 12 24 L 20 32 L 12 40" fill="none" stroke="${COLOR.teal}"/>` +
+  `<line x1="28" y1="22" x2="72" y2="22" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
+  `<line x1="28" y1="32" x2="62" y2="32" stroke="${COLOR.dim}"/>` +
+  `<line x1="28" y1="42" x2="68" y2="42" stroke="${COLOR.dim}"/>` +
+  `</svg>`;
 
 function handoffRow(...buttons: string[]): string {
   return `<div class="swb-handoff">${buttons.join("")}</div>`;
@@ -134,7 +179,10 @@ function renderCalculateOutput(state: ShellState): string {
   if (first === undefined) {
     return (
       errorsBlock(errors) +
-      hint("Enter a subnet to see the full derivation, the 32-bit view, and the prefix split.")
+      hint(
+        HINT_SVG_CALCULATE,
+        "<b>Waiting on a subnet.</b> Enter CIDR, mask, or slash-mask &mdash; you get the full derivation, the 32-bit view, and a draggable prefix split."
+      )
     );
   }
   const result = calculate(first);
@@ -165,7 +213,10 @@ function renderOverlapOutput(state: ShellState): string {
   if (subnets.length === 0) {
     return (
       errorsBlock(errors) +
-      hint("Paste a subnet list to check for conflicts. Labels make the report readable: \"Knoxville overlaps Nashville\" beats \"these two overlap\".")
+      hint(
+        HINT_SVG_OVERLAP,
+        "<b>Waiting on a list.</b> Paste subnets one per line and conflicts get flagged with severity. Labels make the report readable: &quot;Knoxville overlaps Nashville&quot; beats &quot;these two overlap&quot;."
+      )
     );
   }
   return (
@@ -188,7 +239,19 @@ function renderVlsmOutput(state: ShellState): string {
   if (supernet === undefined) {
     return (
       errorsBlock([...supernetParse.errors, ...reqErrors]) +
-      hint("Give a supernet and per-requirement host counts; allocation is largest-first with stranded space shown explicitly.")
+      hint(
+        HINT_SVG_VLSM,
+        "<b>Waiting on a supernet.</b> Give a network to carve plus per-requirement host counts; allocation is largest-first with stranded space shown explicitly."
+      )
+    );
+  }
+  if (reqParse.requirements.length === 0) {
+    return (
+      errorsBlock([...supernetParse.errors, ...reqErrors]) +
+      hint(
+        HINT_SVG_VLSM,
+        "<b>Waiting on requirements.</b> Add host counts one per line and the ledger carves the supernet largest-first, showing stranded space and what remains."
+      )
     );
   }
   const result = allocateVlsm(supernet, reqParse.requirements, {
@@ -209,7 +272,10 @@ function renderVendorOutput(state: ShellState): string {
   if (subnets.length === 0) {
     return (
       errorsBlock(errors) +
-      hint("Paste subnets (or hand them off from any mode) to render interface, route, address-object, and policy syntax. <angle> fields are yours to fill.")
+      hint(
+        HINT_SVG_VENDOR,
+        "<b>Waiting on subnets.</b> Paste them or hand off from any mode &mdash; interface, route, address-object, and policy syntax render copy-ready. &lt;angle&gt; fields are yours to fill."
+      )
     );
   }
   const vendor = vendorById(state.vendorId);
@@ -283,6 +349,8 @@ export function renderFooter(state: ShellState): string {
 export function renderShell(state: ShellState): string {
   return (
     `<div class="swb-app">` +
+    `<span class="swb-corner swb-c-tl"></span><span class="swb-corner swb-c-tr"></span>` +
+    `<span class="swb-corner swb-c-bl"></span><span class="swb-corner swb-c-br"></span>` +
     `<div class="swb-tabs" id="swb-tabs">${renderTabs(state)}</div>` +
     `<div class="swb-body">` +
     `<div class="swb-left" id="swb-input">${renderInputPanel(state)}</div>` +
@@ -298,7 +366,12 @@ export function renderShell(state: ShellState): string {
 // ---------------------------------------------------------------------------
 
 export const SHELL_CSS = `
-.swb-app { border: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-deep, #040a14); font-family: var(--font-body, 'Saira', sans-serif); color: var(--color-white, #eef6ff); }
+.swb-app { position: relative; border: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-deep, #040a14); font-family: var(--font-body, 'Saira', sans-serif); color: var(--color-white, #eef6ff); box-shadow: 0 0 60px rgba(17,85,255,0.10); }
+.swb-corner { position: absolute; width: 18px; height: 18px; border: 1px solid var(--color-teal, #00ffcc); opacity: 0.7; z-index: 2; pointer-events: none; }
+.swb-c-tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.swb-c-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+.swb-c-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+.swb-c-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 .swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid var(--bord, rgba(77,166,255,0.28)); background: var(--color-panel, #030812); }
 .swb-tab { position: relative; font-family: var(--font-display, 'Chakra Petch', sans-serif); font-size: 0.78rem; letter-spacing: 0.08em; color: #6666ff; padding: 10px 22px 12px; cursor: pointer; background: none; border: none; }
 .swb-tabbg { position: absolute; inset: 0; transform: skewX(-12deg) translateY(6px); border: 1px solid rgba(17,85,255,0.35); border-bottom: none; transition: transform 0.15s, border-color 0.15s; }
@@ -308,7 +381,7 @@ export const SHELL_CSS = `
 .swb-tab.swb-active .swb-tabbg { transform: skewX(-12deg) translateY(0); border-color: rgba(17,85,255,0.75); background: rgba(17,85,255,0.12); }
 .swb-body { display: grid; grid-template-columns: 340px 1fr; }
 .swb-left { padding: 22px 20px; border-right: 1px solid var(--bord, rgba(77,166,255,0.28)); }
-.swb-right { padding: 22px 24px; min-width: 0; }
+.swb-right { padding: 22px 24px; min-width: 0; background-image: linear-gradient(rgba(77,166,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(77,166,255,0.05) 1px, transparent 1px); background-size: 28px 28px; }
 .swb-field-label { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-dim, #4477aa); margin: 14px 0 6px; }
 .swb-field-label:first-child { margin-top: 0; }
 .swb-input { width: 100%; box-sizing: border-box; background: var(--color-panel, #030812); border: 1px solid var(--bord, rgba(77,166,255,0.28)); color: var(--color-ice, #b0d8ff); font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.72rem; line-height: 1.7; padding: 10px 12px; resize: vertical; }
@@ -316,8 +389,8 @@ export const SHELL_CSS = `
 .swb-num { width: 90px; }
 .swb-select { appearance: none; cursor: pointer; }
 .swb-run { margin-top: 12px; display: flex; gap: 8px; }
-.swb-btn { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-teal, #00ffcc); background: rgba(0,255,204,0.06); border: 1px solid var(--bord-teal, rgba(0,255,204,0.36)); padding: 6px 12px; cursor: pointer; }
-.swb-btn:hover { background: rgba(0,255,204,0.14); }
+.swb-btn { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-teal, #00ffcc); background: rgba(0,255,204,0.06); border: 1px solid var(--bord-teal, rgba(0,255,204,0.36)); padding: 6px 12px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s; }
+.swb-btn:hover { background: rgba(0,255,204,0.14); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,255,204,0.15); }
 .swb-ghost { color: var(--color-dim, #4477aa); background: transparent; border-color: var(--bord, rgba(77,166,255,0.28)); }
 .swb-ghost:hover { color: var(--color-mid, #6699cc); background: rgba(77,166,255,0.06); }
 .swb-visual { margin-bottom: 16px; }
@@ -327,7 +400,10 @@ export const SHELL_CSS = `
 .swb-slider { flex: 1; accent-color: var(--color-teal, #00ffcc); }
 .swb-split-val { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.72rem; color: var(--color-amber, #ffaa00); min-width: 34px; text-align: right; }
 .swb-pre { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.68rem; line-height: 1.9; color: var(--color-mid, #6699cc); white-space: pre; overflow-x: auto; margin: 0 0 4px; }
-.swb-hint { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.66rem; line-height: 1.9; color: var(--color-dim, #4477aa); border: 1px dashed var(--bord, rgba(77,166,255,0.28)); padding: 14px 16px; }
+.swb-hint { display: flex; gap: 16px; align-items: center; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.66rem; line-height: 1.9; color: var(--color-dim, #4477aa); border: 1px dashed var(--bord, rgba(77,166,255,0.28)); background: var(--color-deep, #040a14); padding: 16px 18px; }
+.swb-hint svg { flex-shrink: 0; }
+.swb-hint p { margin: 0; }
+.swb-hint b { color: var(--color-mid, #6699cc); font-weight: 400; }
 .swb-errors { margin-bottom: 12px; }
 .swb-error { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.62rem; line-height: 1.8; color: var(--color-amber, #ffaa00); border-left: 2px solid var(--color-amber, #ffaa00); background: rgba(255,170,0,0.06); padding: 4px 10px; margin-bottom: 4px; }
 .swb-handoff { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(77,166,255,0.15); }

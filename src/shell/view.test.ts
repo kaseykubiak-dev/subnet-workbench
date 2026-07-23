@@ -93,9 +93,10 @@ describe("renderInputPanel", () => {
 });
 
 describe("renderOutput / calculate", () => {
-  it("shows a hint when empty", () => {
+  it("shows a schematic hint when empty", () => {
     const html = renderOutput(initialState);
     expect(html).toContain("swb-hint");
+    expect(html).toContain("<svg");
     expect(html).not.toContain("data-visual");
   });
 
@@ -166,6 +167,16 @@ describe("renderOutput / vlsm", () => {
     expect(html).toContain('data-action="vlsm-to-vendor"');
   });
 
+  it("shows one hint, not two empty messages, with supernet but no requirements", () => {
+    const html = renderOutput(
+      withState({ mode: "vlsm", vlsmSupernetInput: "10.0.0.0/16" })
+    );
+    expect(html).toContain("swb-hint");
+    expect(html).toContain("Waiting on requirements");
+    expect(html).not.toContain("Nothing to allocate");
+    expect(html).not.toContain("swb-ledger");
+  });
+
   it("omits the hand-off when nothing was allocated", () => {
     const html = renderOutput(
       withState({
@@ -228,6 +239,14 @@ describe("renderShell", () => {
     const html = renderShell(initialState);
     for (const id of ["swb-tabs", "swb-input", "swb-output", "swb-footer"]) {
       expect(html).toContain(`id="${id}"`);
+    }
+  });
+
+  it("frames the app with four corner brackets", () => {
+    const html = renderShell(initialState);
+    expect(html.match(/swb-corner/g)).toHaveLength(4);
+    for (const c of ["swb-c-tl", "swb-c-tr", "swb-c-bl", "swb-c-br"]) {
+      expect(html).toContain(c);
     }
   });
 });
