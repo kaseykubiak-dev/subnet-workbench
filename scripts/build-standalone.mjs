@@ -49,7 +49,7 @@ const html = `<!DOCTYPE html>
     --font-body: 'Saira', 'Segoe UI', system-ui, sans-serif;
   }
   body { margin: 0; background: var(--color-void); padding: 40px 20px; }
-  .swb-page { max-width: 1100px; margin: 0 auto; }
+  .swb-page { max-width: 1500px; margin: 0 auto; }
   .swb-eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--color-teal); margin-bottom: 6px; }
   .swb-eyebrow::before { content: "// "; color: var(--color-amber); }
   .swb-title { font-family: var(--font-display); font-size: 1.3rem; letter-spacing: 0.04em; color: var(--color-white); margin: 0 0 4px; }
