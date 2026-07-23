@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ribbon Split Marker — Mockups</title>
+<style>
+  body {
+    background: #020509;
+    color: #eef6ff;
+    font-family: 'IBM Plex Mono', monospace;
+    margin: 0;
+    padding: 40px 24px 80px;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.2em; color: #4da6ff; }
+  p.note { color: #9dbcdf; font-size: 0.78rem; max-width: 900px; line-height: 1.6; }
+  section {
+    max-width: 1100px;
+    margin: 48px auto 0;
+    border: 1px solid rgba(77, 166, 255, 0.3);
+    background: #030812;
+    padding: 24px 28px 32px;
+  }
+  section h2 {
+    font-size: 0.8rem;
+    letter-spacing: 0.18em;
+    color: #00ffcc;
+    margin: 0 0 4px;
+  }
+  section p { color: #9dbcdf; font-size: 0.74rem; margin: 0 0 20px; }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 18px;
+  }
+  .slider-row label {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    color: #9dbcdf;
+  }
+  .slider-row input[type="range"] { flex: 1; accent-color: #00ffcc; }
+  .slider-row output { color: #ffaa00; font-size: 0.8rem; min-width: 40px; }
+  svg { width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body>
+<h1>RIBBON SPLIT MARKER — 3 VARIANTS</h1>
+<p class="note">Base subnet 10.20.30.0/24 — the amber line is the existing subnet-mask boundary.
+Each variant adds a second, teal marker that tracks the Prefix Split slider. Drag the slider
+under each ribbon to see how the marker moves.</p>
+
+<section id="A">
+  <h2>A — GHOST RAIL</h2>
+  <p>Dashed teal line with its own /nn tag hanging below the cells (amber tag stays on top). Minimal, mirrors the existing boundary language.</p>
+  <div class="svg-slot"></div>
+  <div class="slider-row">
+    <label>PREFIX SPLIT</label>
+    <input type="range" min="24" max="32" value="29">
+    <output>/29</output>
+  </div>
+</section>
+
+<section id="B">
+  <h2>B — SPLIT BAND</h2>
+  <p>The bits between the mask and the split target get a faint teal wash, plus a solid teal line at the target. Shows the "borrowed" subnet bits as a region, not just a point.</p>
+  <div class="svg-slot"></div>
+  <div class="slider-row">
+    <label>PREFIX SPLIT</label>
+    <input type="range" min="24" max="32" value="29">
+    <output>/29</output>
+  </div>
+</section>
+
+<section id="C">
+  <h2>C — CARET MARKER</h2>
+  <p>A teal caret (▼) rides along the top edge with a thin solid drop line through the cells. The caret gives the eye a handle to follow while dragging.</p>
+  <div class="svg-slot"></div>
+  <div class="slider-row">
+    <label>PREFIX SPLIT</label>
+    <input type="range" min="24" max="32" value="29">
+    <output>/29</output>
+  </div>
+</section>
+
+<script>
+const CELL_W = 28, OCTET_GAP = 16, X0 = 24, Y0 = 70, CELL_H = 44, VIEW_W = 992, VIEW_H = 210;
+const ADDR = [10, 20, 30, 0];
+const PREFIX = 24;
+const bits = ADDR.flatMap(o => [...Array(8)].map((_, i) => (o >> (7 - i)) & 1));
+
+function bitX(i) { return X0 + i * CELL_W + Math.floor(i / 8) * OCTET_GAP; }
+function bX(p) { return bitX(p) - 2; }
+
+function ribbon(variant, split) {
+  const s = [];
+  // Octet headers
+  for (let o = 0; o < 4; o++) {
+    const cx = (bitX(o * 8) + bitX(o * 8 + 7) + CELL_W) / 2;
+    s.push(`<text x="${cx}" y="40" text-anchor="middle" font-family="monospace" font-size="14" letter-spacing="0.12em" fill="#4da6ff">${ADDR[o]}</text>`);
+  }
+  // Variant B: teal wash over borrowed bits (prefix..split)
+  if (variant === "B" && split > PREFIX) {
+    s.push(`<rect x="${bX(PREFIX)}" y="${Y0 - 4}" width="${bX(split) - bX(PREFIX)}" height="${CELL_H + 8}" fill="#00ffcc" fill-opacity="0.08"/>`);
+  }
+  // Cells
+  for (let i = 0; i < 32; i++) {
+    const isNet = i < PREFIX;
+    const x = bitX(i);
+    s.push(`<rect x="${x}" y="${Y0}" width="${CELL_W - 2}" height="${CELL_H}" fill="${isNet ? '#00ffcc' : '#0044dd'}" fill-opacity="${isNet ? 0.14 : 0.07}" stroke="${isNet ? '#00ffcc' : '#7fa6cd'}" stroke-opacity="${isNet ? 0.45 : 0.35}"/>`);
+    s.push(`<text x="${x + (CELL_W - 2) / 2}" y="${Y0 + CELL_H / 2 + 5}" text-anchor="middle" font-family="monospace" font-size="14" fill="${isNet ? '#eef6ff' : '#9dbcdf'}">${bits[i]}</text>`);
+  }
+  // Existing amber mask boundary
+  const ax = bX(PREFIX);
+  s.push(`<line x1="${ax}" y1="${Y0 - 14}" x2="${ax}" y2="${Y0 + CELL_H + 14}" stroke="#ffaa00" stroke-width="2"/>`);
+  s.push(`<text x="${ax}" y="${Y0 - 22}" text-anchor="middle" font-family="monospace" font-size="12" letter-spacing="0.12em" fill="#ffaa00">/${PREFIX}</text>`);
+  // Split marker (only when it differs from the mask)
+  const sx = bX(split);
+  if (split > PREFIX) {
+    if (variant === "A") {
+      s.push(`<line x1="${sx}" y1="${Y0 - 10}" x2="${sx}" y2="${Y0 + CELL_H + 18}" stroke="#00ffcc" stroke-width="2" stroke-dasharray="4 3"/>`);
+      s.push(`<text x="${sx}" y="${Y0 + CELL_H + 34}" text-anchor="middle" font-family="monospace" font-size="12" letter-spacing="0.12em" fill="#00ffcc">/${split}</text>`);
+    } else if (variant === "B") {
+      s.push(`<line x1="${sx}" y1="${Y0 - 10}" x2="${sx}" y2="${Y0 + CELL_H + 18}" stroke="#00ffcc" stroke-width="2"/>`);
+      s.push(`<text x="${sx}" y="${Y0 + CELL_H + 34}" text-anchor="middle" font-family="monospace" font-size="12" letter-spacing="0.12em" fill="#00ffcc">/${split}</text>`);
+    } else {
+      s.push(`<path d="M ${sx - 6} ${Y0 - 18} L ${sx + 6} ${Y0 - 18} L ${sx} ${Y0 - 8} Z" fill="#00ffcc"/>`);
+      s.push(`<line x1="${sx}" y1="${Y0 - 8}" x2="${sx}" y2="${Y0 + CELL_H + 10}" stroke="#00ffcc" stroke-width="1.5" stroke-opacity="0.8"/>`);
+      s.push(`<text x="${sx}" y="${Y0 - 26}" text-anchor="middle" font-family="monospace" font-size="12" letter-spacing="0.12em" fill="#00ffcc">/${split}</text>`);
+    }
+  }
+  // Brackets (kept below everything, drawn last for clarity)
+  const bktY = Y0 + CELL_H + 44;
+  const bracket = (from, to, label, color) => {
+    const l = bitX(from), r = bitX(to) + CELL_W - 2;
+    s.push(`<path d="M ${l} ${bktY} v 6 H ${r} v -6" fill="none" stroke="${color}" stroke-opacity="0.6"/>`);
+    s.push(`<text x="${(l + r) / 2}" y="${bktY + 22}" text-anchor="middle" font-family="monospace" font-size="10" letter-spacing="0.12em" fill="${color}">${label}</text>`);
+  };
+  bracket(0, PREFIX - 1, `NETWORK (${PREFIX} bits)`, "#00ffcc");
+  bracket(PREFIX, 31, `HOST (${32 - PREFIX} bits)`, "#4da6ff");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW_W} ${VIEW_H + 30}">${s.join("")}</svg>`;
+}
+
+for (const id of ["A", "B", "C"]) {
+  const sec = document.getElementById(id);
+  const slot = sec.querySelector(".svg-slot");
+  const range = sec.querySelector("input");
+  const out = sec.querySelector("output");
+  const draw = () => {
+    slot.innerHTML = ribbon(id, Number(range.value));
+    out.textContent = "/" + range.value;
+  };
+  range.addEventListener("input", draw);
+  draw();
+}
+</script>
+</body>
+</html>
