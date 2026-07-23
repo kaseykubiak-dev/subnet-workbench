@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subnet Workbench — Page Shell Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Saira:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #020509; --deep: #040a14; --panel: #030812;
+    --blue: #0044dd; --glow: #1155ff; --bright: #4da6ff; --ice: #b0d8ff;
+    --teal: #00ffcc; --amber: #ffaa00;
+    --white: #eef6ff; --mid: #6699cc; --dim: #4477aa;
+    --bord: rgba(77,166,255,0.28); --bord-teal: rgba(0,255,204,0.36);
+    --mono: 'IBM Plex Mono', monospace; --display: 'Chakra Petch', sans-serif; --body: 'Saira', sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--void); color: var(--white); font-family: var(--body); font-weight: 300; padding: 48px 24px 96px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-family: var(--display); font-size: 1.5rem; letter-spacing: 0.04em; }
+  .eyebrow { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--teal); margin-bottom: 8px; }
+  .eyebrow::before { content: "// "; color: var(--amber); }
+  .intro { color: var(--mid); font-size: 0.9rem; max-width: 720px; margin-top: 10px; line-height: 1.8; }
+  .divider { height: 1px; margin: 44px 0; background: linear-gradient(to right, transparent, var(--teal) 20%, var(--blue) 80%, transparent); opacity: 0.5; }
+
+  .variant-tag { display: inline-block; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.18em; color: var(--amber); border: 1px solid rgba(255,170,0,0.38); padding: 3px 10px; margin-bottom: 10px; }
+  h2 { font-family: var(--display); font-size: 1.1rem; margin-bottom: 4px; }
+  .variant-note { color: var(--mid); font-size: 0.82rem; margin-bottom: 20px; max-width: 760px; line-height: 1.7; }
+  .frame { border: 1px solid var(--bord); background: var(--deep); padding: 0; overflow: hidden; }
+
+  /* ============ shared shell bits ============ */
+  .mono-btn { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--teal); background: rgba(0,255,204,0.06); border: 1px solid var(--bord-teal); padding: 6px 12px; cursor: pointer; }
+  .mono-btn.amber { color: var(--amber); background: rgba(255,170,0,0.05); border-color: rgba(255,170,0,0.38); }
+  .mono-btn.ghost { color: var(--dim); background: transparent; border-color: var(--bord); }
+  textarea.input-area { width: 100%; background: var(--panel); border: 1px solid var(--bord); color: var(--ice); font-family: var(--mono); font-size: 0.72rem; line-height: 1.7; padding: 12px; resize: none; }
+  textarea.input-area:focus { outline: none; border-color: var(--bord-teal); }
+  .field-label { font-family: var(--mono); font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+  .result-text { font-family: var(--mono); font-size: 0.68rem; line-height: 1.9; color: var(--mid); white-space: pre; overflow-x: auto; }
+  .result-text .ok { color: var(--teal); }
+  .result-text .hl { color: var(--white); }
+  .visual-slot { border: 1px dashed rgba(0,255,204,0.25); background: rgba(0,255,204,0.02); display: flex; align-items: center; justify-content: center; min-height: 150px; }
+  .visual-slot span { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.2em; color: var(--dim); text-transform: uppercase; }
+
+  /* ============ Variant A: Command Deck ============ */
+  .a-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid var(--bord); background: var(--panel); }
+  .a-tab { position: relative; font-family: var(--display); font-size: 0.78rem; letter-spacing: 0.08em; color: #6666ff; padding: 10px 22px 12px; cursor: pointer; }
+  .a-tab .tabbg { position: absolute; inset: 0; transform: skewX(-12deg) translateY(6px); border: 1px solid rgba(17,85,255,0.35); border-bottom: none; background: transparent; z-index: 0; transition: transform 0.15s; }
+  .a-tab span.lbl { position: relative; z-index: 1; }
+  .a-tab.active { color: var(--white); }
+  .a-tab.active .tabbg { transform: skewX(-12deg) translateY(0); border-color: rgba(17,85,255,0.75); background: rgba(17,85,255,0.12); }
+  .a-body { display: grid; grid-template-columns: 340px 1fr; gap: 0; }
+  .a-left { padding: 22px 20px; border-right: 1px solid var(--bord); }
+  .a-right { padding: 22px 24px; }
+  .a-run { margin-top: 12px; display: flex; gap: 8px; }
+  .a-handoff { display: flex; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(77,166,255,0.15); }
+  .a-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-top: 1px solid var(--bord); background: var(--panel); }
+  .a-footer .status { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.16em; color: var(--dim); }
+  .a-footer .status b { color: var(--teal); font-weight: 400; }
+
+  /* ============ Variant B: Workbench Rail ============ */
+  .b-grid { display: grid; grid-template-columns: 176px 1fr; }
+  .b-rail { border-right: 1px solid var(--bord); background: var(--panel); padding: 20px 0; }
+  .b-mode { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); padding: 12px 20px; cursor: pointer; border-left: 2px solid transparent; }
+  .b-mode small { display: block; font-size: 0.52rem; letter-spacing: 0.08em; text-transform: none; color: var(--dim); opacity: 0.7; margin-top: 3px; }
+  .b-mode.active { color: var(--teal); border-left-color: var(--teal); background: rgba(0,255,204,0.05); }
+  .b-mode.active small { color: var(--mid); }
+  .b-main { padding: 22px 24px; }
+  .b-input-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-bottom: 20px; }
+  .b-chiprow { display: flex; gap: 6px; margin-top: 10px; }
+  .b-chip { font-family: var(--mono); font-size: 0.55rem; letter-spacing: 0.12em; color: #6666ff; border: 1px solid rgba(102,102,255,0.4); padding: 3px 9px; cursor: pointer; }
+  .b-resultcard { border: 1px solid var(--bord); background: var(--panel); padding: 16px; margin-top: 18px; position: relative; }
+  .b-resultcard .hud { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, transparent, var(--teal) 20%, var(--blue) 80%, transparent); opacity: 0.6; }
+
+  /* ============ Variant C: HUD Stack ============ */
+  .c-hud { display: flex; align-items: center; justify-content: space-between; background: rgba(0,255,204,0.05); padding: 10px 20px; position: relative; }
+  .c-hud::before, .c-hud::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: linear-gradient(to right, transparent, var(--teal) 20%, var(--blue) 80%, transparent); opacity: 0.6; }
+  .c-hud::before { top: 0; } .c-hud::after { bottom: 0; }
+  .c-hud .hud-label { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.2em; color: var(--teal); text-shadow: 0 0 14px rgba(0,255,204,0.55); text-transform: uppercase; }
+  .c-seg { display: flex; border: 1px solid var(--bord-teal); }
+  .c-seg button { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mid); background: transparent; border: none; border-right: 1px solid rgba(0,255,204,0.15); padding: 7px 16px; cursor: pointer; }
+  .c-seg button:last-child { border-right: none; }
+  .c-seg button.active { color: var(--void); background: var(--teal); font-weight: 500; }
+  .c-col { max-width: 760px; margin: 0 auto; padding: 26px 24px 30px; }
+  .c-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .c-resultwrap { margin-top: 22px; }
+  .c-handoff-corner { position: absolute; top: 10px; right: 12px; display: flex; gap: 6px; }
+
+  .combine { margin-top: 56px; border: 1px solid var(--bord); background: var(--panel); padding: 24px; }
+  .combine h3 { font-family: var(--display); font-size: 0.95rem; margin-bottom: 12px; }
+  .combine p { color: var(--mid); font-size: 0.82rem; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Subnet Workbench — Step 8</div>
+  <h1>Page Shell Mockups</h1>
+  <p class="intro">Three shell layouts, each shown in Calculate mode with the same content: input panel, the 1A bit-ribbon visual slot, text results, mode hand-off actions, and the opt-in "Copy shareable link" button. The four visible mode tabs are the fixed requirement; what varies is where they live and how input, visual, and hand-off relate.</p>
+
+  <div class="divider"></div>
+
+  <!-- ================= VARIANT A ================= -->
+  <span class="variant-tag">VARIANT A — COMMAND DECK</span>
+  <h2>Top tab rail, two-column workspace</h2>
+  <p class="variant-note">Nav-style parallelogram tabs (matches the site nav) across the top. Input stays pinned in a left column, results and visual fill the right, so input and output are visible side by side while iterating. Hand-off is a row of actions under the results; the share link lives in a persistent footer status bar.</p>
+
+  <div class="frame">
+    <div class="a-tabs">
+      <div class="a-tab active"><span class="tabbg"></span><span class="lbl">Calculate</span></div>
+      <div class="a-tab"><span class="tabbg"></span><span class="lbl">Overlap</span></div>
+      <div class="a-tab"><span class="tabbg"></span><span class="lbl">VLSM</span></div>
+      <div class="a-tab"><span class="tabbg"></span><span class="lbl">Vendor Syntax</span></div>
+    </div>
+    <div class="a-body">
+      <div class="a-left">
+        <div class="field-label">Subnet input</div>
+        <textarea class="input-area" rows="6" readonly>192.168.1.0/26</textarea>
+        <div class="a-run">
+          <button class="mono-btn">Calculate</button>
+          <button class="mono-btn ghost">Clear</button>
+        </div>
+      </div>
+      <div class="a-right">
+        <div class="visual-slot"><span>1A bit ribbon renders here</span></div>
+        <div class="result-text" style="margin-top:16px;"><span class="hl">Network</span>      192.168.1.0/26
+<span class="hl">Mask</span>         255.255.255.192
+<span class="hl">Usable</span>       192.168.1.1 - 192.168.1.62   <span class="ok">62 hosts</span>
+<span class="hl">Broadcast</span>    192.168.1.63                 RFC 1918</div>
+        <div class="a-handoff">
+          <button class="mono-btn">&#8594; Add to Overlap list</button>
+          <button class="mono-btn">&#8594; Use as VLSM supernet</button>
+          <button class="mono-btn amber">&#8594; Vendor syntax</button>
+        </div>
+      </div>
+    </div>
+    <div class="a-footer">
+      <div class="status">MODE <b>CALCULATE</b> &nbsp;&middot;&nbsp; 1 SUBNET HELD</div>
+      <button class="mono-btn ghost">Copy shareable link</button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ================= VARIANT B ================= -->
+  <span class="variant-tag">VARIANT B — WORKBENCH RAIL</span>
+  <h2>Left mode rail, full-width flow</h2>
+  <p class="variant-note">Vertical mode rail on the left (CLIFS category-filter feel) with a one-line description under each mode, doubling as the "what this tool does" statement. Main column flows input &#8594; visual &#8594; results top to bottom, giving the visual full width. Hand-off is a chip row attached directly to the result card. Share link sits with the run controls.</p>
+
+  <div class="frame">
+    <div class="b-grid">
+      <div class="b-rail">
+        <div class="b-mode active">Calculate<small>one subnet, fully derived</small></div>
+        <div class="b-mode">Overlap<small>paste a list, find conflicts</small></div>
+        <div class="b-mode">VLSM<small>carve a supernet by need</small></div>
+        <div class="b-mode">Vendor Syntax<small>FortiOS / IOS / pfSense</small></div>
+      </div>
+      <div class="b-main">
+        <div class="b-input-row">
+          <div>
+            <div class="field-label">Subnet input</div>
+            <textarea class="input-area" rows="2" readonly>192.168.1.0/26</textarea>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button class="mono-btn">Calculate</button>
+            <button class="mono-btn ghost">Share link</button>
+          </div>
+        </div>
+        <div class="visual-slot" style="min-height:180px;"><span>1A bit ribbon renders here — full width</span></div>
+        <div class="b-resultcard">
+          <div class="hud"></div>
+          <div class="result-text"><span class="hl">Network</span>      192.168.1.0/26        <span class="hl">Mask</span>  255.255.255.192
+<span class="hl">Usable</span>       192.168.1.1 - .62     <span class="ok">62 hosts</span> &nbsp; RFC 1918</div>
+          <div class="b-chiprow">
+            <span class="b-chip">&#8594; OVERLAP LIST</span>
+            <span class="b-chip">&#8594; VLSM SUPERNET</span>
+            <span class="b-chip">&#8594; VENDOR SYNTAX</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ================= VARIANT C ================= -->
+  <span class="variant-tag">VARIANT C — HUD STACK</span>
+  <h2>HUD bar with segmented tabs, centered column</h2>
+  <p class="variant-note">The portfolio-card HUD bar becomes the tool's chrome: glowing strip with the tool name left, segmented mode control center, share link right. Below it a single centered column (input, visual, results) like a focused instrument panel. Hand-off actions sit in the result card's corner. Most compact chrome of the three; tabs read as a control, not navigation.</p>
+
+  <div class="frame">
+    <div class="c-hud">
+      <span class="hud-label">Subnet Workbench // 01</span>
+      <div class="c-seg">
+        <button class="active">Calc</button>
+        <button>Overlap</button>
+        <button>VLSM</button>
+        <button>Syntax</button>
+      </div>
+      <button class="mono-btn ghost" style="font-size:0.52rem;">Copy shareable link</button>
+    </div>
+    <div class="c-col">
+      <div class="field-label">Subnet input</div>
+      <textarea class="input-area" rows="2" readonly>192.168.1.0/26</textarea>
+      <div class="c-actions">
+        <button class="mono-btn ghost">Clear</button>
+        <button class="mono-btn">Calculate</button>
+      </div>
+      <div class="c-resultwrap">
+        <div class="visual-slot" style="min-height:170px;"><span>1A bit ribbon renders here</span></div>
+        <div class="b-resultcard" style="margin-top:14px;">
+          <div class="hud"></div>
+          <div class="c-handoff-corner">
+            <span class="b-chip">&#8594; OVERLAP</span>
+            <span class="b-chip">&#8594; VLSM</span>
+            <span class="b-chip">&#8594; SYNTAX</span>
+          </div>
+          <div class="result-text" style="margin-top:18px;"><span class="hl">Network</span>      192.168.1.0/26
+<span class="hl">Usable</span>       192.168.1.1 - 192.168.1.62   <span class="ok">62 hosts</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="combine">
+    <h3>Combinable pieces</h3>
+    <p>
+      Tab treatments, layout skeletons, and hand-off styles are independent — any tab row works with any layout.
+      <br><br>
+      <strong style="color:var(--white); font-weight:400;">Tabs:</strong> A parallelogram nav-tabs &middot; B mode rail with descriptions &middot; C segmented HUD control.<br>
+      <strong style="color:var(--white); font-weight:400;">Layout:</strong> A side-by-side input/output &middot; B full-width top-to-bottom flow &middot; C centered narrow column.<br>
+      <strong style="color:var(--white); font-weight:400;">Hand-off:</strong> A button row under results &middot; B/C chip row on the result card (corner or bottom).<br>
+      <strong style="color:var(--white); font-weight:400;">Share link:</strong> A footer status bar &middot; B beside run controls &middot; C in the HUD bar.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
