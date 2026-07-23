@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subnet Workbench — readability mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Saira:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --color-void: #020509; --color-deep: #040a14; --color-panel: #030812;
+  --color-blue: #0044dd; --color-glow: #1155ff; --color-bright: #4da6ff; --color-ice: #b0d8ff;
+  --color-teal: #00ffcc; --color-amber: #ffaa00;
+  --color-white: #eef6ff;
+  --bord: rgba(77,166,255,0.28); --bord-teal: rgba(0,255,204,0.36);
+  --font-display: 'Chakra Petch', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-body: 'Saira', sans-serif;
+}
+body { margin: 0; background: var(--color-void); padding: 48px 24px 120px; font-family: var(--font-body); }
+.wrap { max-width: 900px; margin: 0 auto; }
+.mock-eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--color-teal); margin: 72px 0 6px; }
+.mock-eyebrow::before { content: "// "; color: var(--color-amber); }
+.mock-eyebrow:first-child { margin-top: 0; }
+.mock-title { font-family: var(--font-display); font-size: 1.25rem; color: var(--color-white); margin: 0 0 8px; }
+.mock-desc { font-size: 0.82rem; font-weight: 300; line-height: 1.7; color: #9dbcdf; max-width: 720px; margin: 0 0 22px; }
+
+/* Panel replicating the output column (grid bg, sized like the real right panel) */
+.panel {
+  border: 1px solid rgba(77,166,255,0.45); background: var(--color-deep); padding: 22px 24px;
+  background-image: linear-gradient(rgba(77,166,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(77,166,255,0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.panel svg { width: 100%; height: auto; display: block; }
+
+/* ── CURRENT (for comparison) ── */
+.cur .pre { font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.9; color: #6699cc; white-space: pre; overflow-x: auto; margin: 0; }
+
+/* ── Variant A: Measured Lift ──
+   SVG text +2px, greys one step lighter, info box = solid panel + border */
+.vA .pre { font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.9; color: #8fb3d9; white-space: pre; overflow-x: auto; margin: 0; }
+.vA .infobox { background: var(--color-panel); border: 1px solid var(--bord); padding: 14px 16px; margin-top: 18px; }
+
+/* ── Variant B: Bright Lift ──
+   SVG text +4px, greys two steps lighter (toward ice), info box = blue-tinted */
+.vB .pre { font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.9; color: #a9c7e8; white-space: pre; overflow-x: auto; margin: 0; }
+.vB .infobox { background: rgba(6,16,32,0.85); border: 1px solid rgba(77,166,255,0.35); padding: 14px 16px; margin-top: 18px; }
+
+/* ── Variant C: Accent Panel ──
+   SVG text +3px, greys ~1.5 steps lighter, info box = panel + teal left rail */
+.vC .pre { font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.9; color: #9dbcdf; white-space: pre; overflow-x: auto; margin: 0; }
+.vC .infobox { background: var(--color-panel); border: 1px solid rgba(77,166,255,0.2); border-left: 2px solid rgba(0,255,204,0.55); padding: 14px 16px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mock-eyebrow">Readability mockups</div>
+  <h1 class="mock-title" style="font-size:1.5rem">Split-bar text size, grey ramp, and the network info box</h1>
+  <p class="mock-desc">Same calculate output, four times. First the current state for reference, then three lifts. The grey change applies shell-wide (field labels, footer status, ledger meta, notes) — shown here on the info text. Pieces combinable: you can take one variant's sizes with another's box.</p>
+
+  <div id="slots"></div>
+
+</div>
+<script>
+const PRE = [
+  ["Network",         "192.168.0.0/18"],
+  ["Netmask",         "255.255.192.0"],
+  ["Wildcard",        "0.0.63.255"],
+  ["Broadcast",       "192.168.63.255"],
+  ["Usable range",    "192.168.0.1 - 192.168.63.254"],
+  ["Usable hosts",    "16,382"],
+  ["Total addresses", "16,384"],
+  ["Address type",    "Private (RFC 1918)"],
+].map(([k, v]) => k.padEnd(18) + v).join("\n");
+
+// Replica of the prefix-split SVG with parameterized font sizes / grey.
+function splitSvg(headerFs, labelFs, footerFs, dimColor) {
+  const labels = [".0.0", ".16.0", ".32.0", ".48.0"];
+  let blocks = "";
+  for (let i = 0; i < 4; i++) {
+    const x = 24 + i * 236;
+    blocks += '<rect x="' + x + '" y="56" width="236" height="40" fill="#00ffcc" fill-opacity="' + (i % 2 === 0 ? 0.14 : 0.07) + '" stroke="#00ffcc" stroke-opacity="0.4"/>';
+    blocks += '<text x="' + (x + 118) + '" y="81" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="' + labelFs + '" fill="#eef6ff">' + labels[i] + '</text>';
+    blocks += '<line x1="' + (x + 118) + '" y1="59" x2="' + (x + 118) + '" y2="93" stroke="#ffaa00" stroke-opacity="0.45" stroke-dasharray="3 4"/>';
+  }
+  return '<svg viewBox="0 0 992 150" xmlns="http://www.w3.org/2000/svg">'
+    + '<text x="24" y="34" font-family="IBM Plex Mono, monospace" font-size="' + headerFs + '" fill="#00ffcc">192.168.0.0/18</text>'
+    + '<text x="968" y="34" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="' + headerFs + '" fill="#ffaa00">-&gt; 4 x /20</text>'
+    + blocks
+    + '<text x="24" y="126" font-family="IBM Plex Mono, monospace" font-size="' + footerFs + '" fill="' + dimColor + '">4,096 addresses per /20</text>'
+    + '</svg>';
+}
+
+const variants = [
+  ["cur", "Current", "What ships today: 13/11/11px SVG text, #6699cc mid grey, no box behind the info text.", [13, 11, 11, "#4477aa"], false],
+  ["vA", "Variant A — Measured Lift", "SVG text up two sizes (15/13/13). Greys one step lighter: mid #6699cc → #8fb3d9, dim #4477aa → #7096bd. Info box: solid panel background with the standard border — quiet, sits behind the text.", [15, 13, 13, "#7096bd"], true],
+  ["vB", "Variant B — Bright Lift", "SVG text up four sizes (16/15/14) — the block labels really pop. Greys two steps lighter, heading toward ice: mid → #a9c7e8, dim → #8ab0d8. Info box: slightly blue-tinted with a brighter border.", [16, 15, 14, "#8ab0d8"], true],
+  ["vC", "Variant C — Accent Panel", "SVG text up three sizes (15/14/13). Greys between A and B: mid → #9dbcdf, dim → #7fa6cd. Info box: panel background with a teal left rail — matches the error-block language, marks it as 'the answer'.", [15, 14, 13, "#7fa6cd"], true],
+];
+
+const slots = document.getElementById("slots");
+for (const [cls, title, desc, fs, box] of variants) {
+  const section = document.createElement("div");
+  section.innerHTML = '<div class="mock-eyebrow">' + title + '</div><p class="mock-desc">' + desc + '</p>';
+  const holder = document.createElement("div");
+  holder.className = cls;
+  const inner = box
+    ? splitSvg(...fs) + '<div class="infobox"><pre class="pre">' + PRE + '</pre></div>'
+    : splitSvg(...fs) + '<div style="margin-top:18px"><pre class="pre">' + PRE + '</pre></div>';
+  holder.innerHTML = '<div class="panel">' + inner + '</div>';
+  section.appendChild(holder);
+  slots.appendChild(section);
+}
+</script>
+</body>
+</html>
