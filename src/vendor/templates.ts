@@ -8,7 +8,7 @@
  * Placeholder conventions:
  *   {curly}   - filled in by the renderer from the subnet (see render.ts
  *               for the full key list: cidr, network, prefix, mask,
- *               wildcard, firstUsable, lastUsable, name)
+ *               wildcard, firstUsable, lastUsable, name, identifier)
  *   <angle>   - deliberately left for the user; things the tool cannot
  *               know (interface names, next hops). Never substituted.
  *
@@ -16,6 +16,22 @@
  * (carries the wildcard-mask conversion, the most-fumbled thing in this
  * space), pfSense (multi-vendor story, home lab). Meraki is deliberately
  * excluded: no config CLI worth printing.
+ *
+ * Terraform and Bicep are the cloud-mode additions. They stretch the four
+ * output types rather than fitting them cleanly, and the mapping is stated
+ * here rather than left implicit:
+ *
+ *   interface       the subnet resource itself, since that is where the
+ *                   address range is actually declared
+ *   static-route    a route in a route table
+ *   address-object  the named CIDR as a reusable value (a local / variable),
+ *                   which is how the CIDR gets referenced in practice; Azure
+ *                   has no first-class address-object resource
+ *   policy          an NSG rule scoped to the prefix
+ *
+ * These are snippets, not modules. They assume the VNet, route table, and NSG
+ * already exist and are referenced by name, because the tool knows about one
+ * subnet and inventing surrounding resources would be guessing.
  */
 
 export interface VendorTemplate {
@@ -27,7 +43,7 @@ export interface VendorTemplate {
   note?: string;
 }
 
-export type VendorId = "fortios" | "cisco-ios" | "pfsense";
+export type VendorId = "fortios" | "cisco-ios" | "pfsense" | "terraform" | "bicep";
 
 export interface Vendor {
   id: VendorId;
@@ -157,6 +173,126 @@ export const VENDORS: Vendor[] = [
         title: "Firewall rule (pf)",
         lines: ["pass in on <interface> from {cidr} to any"],
         note: "Raw pf syntax; in the GUI this is Firewall > Rules.",
+      },
+    ],
+  },
+  {
+    id: "terraform",
+    name: "Terraform (azurerm)",
+    templates: [
+      {
+        id: "interface",
+        title: "Subnet resource",
+        lines: [
+          'resource "azurerm_subnet" "{identifier}" {',
+          '  name                 = "{name}"',
+          "  resource_group_name  = <resource-group>",
+          "  virtual_network_name = <vnet-name>",
+          '  address_prefixes     = ["{cidr}"]',
+          "}",
+        ],
+        note: "Azure reserves 5 addresses in this subnet, not 2. Sized for the range only; add delegation or service endpoints as the service requires.",
+      },
+      {
+        id: "static-route",
+        title: "Route table entry",
+        lines: [
+          'resource "azurerm_route" "{identifier}" {',
+          '  name                = "{name}"',
+          "  resource_group_name = <resource-group>",
+          "  route_table_name    = <route-table-name>",
+          '  address_prefix      = "{cidr}"',
+          '  next_hop_type       = "VirtualAppliance"',
+          '  next_hop_in_ip_address = "<next-hop>"',
+          "}",
+        ],
+        note: "next_hop_in_ip_address is only valid with next_hop_type VirtualAppliance; drop it for Internet, VnetLocal, VirtualNetworkGateway or None.",
+      },
+      {
+        id: "address-object",
+        title: "Named CIDR local",
+        lines: ["locals {", '  {identifier}_cidr = "{cidr}"', "}"],
+        note: "Azure has no address-object resource. A local keeps the prefix in one place so rules and routes reference it rather than repeating the literal.",
+      },
+      {
+        id: "policy",
+        title: "Network security rule",
+        lines: [
+          'resource "azurerm_network_security_rule" "allow_{identifier}" {',
+          '  name                        = "allow-{name}"',
+          "  resource_group_name         = <resource-group>",
+          "  network_security_group_name = <nsg-name>",
+          "  priority                    = <100-4096>",
+          '  direction                   = "Inbound"',
+          '  access                      = "Allow"',
+          '  protocol                    = "*"',
+          '  source_address_prefix       = "{cidr}"',
+          '  source_port_range           = "*"',
+          '  destination_address_prefix  = "*"',
+          '  destination_port_range      = "*"',
+          "}",
+        ],
+        note: "Priority must be unique within the NSG. Tighten protocol and ports before production; this opens everything from the prefix.",
+      },
+    ],
+  },
+  {
+    id: "bicep",
+    name: "Bicep",
+    templates: [
+      {
+        id: "interface",
+        title: "Subnet resource",
+        lines: [
+          "resource {identifier} 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = {",
+          "  name: '<vnet-name>/{name}'",
+          "  properties: {",
+          "    addressPrefix: '{cidr}'",
+          "  }",
+          "}",
+        ],
+        note: "Azure reserves 5 addresses in this subnet, not 2. Declaring subnets as child resources rather than inline in the VNet avoids the loop where redeploying the VNet drops subnets it does not list.",
+      },
+      {
+        id: "static-route",
+        title: "Route table entry",
+        lines: [
+          "resource {identifier}Route 'Microsoft.Network/routeTables/routes@2024-05-01' = {",
+          "  name: '<route-table-name>/{name}'",
+          "  properties: {",
+          "    addressPrefix: '{cidr}'",
+          "    nextHopType: 'VirtualAppliance'",
+          "    nextHopIpAddress: '<next-hop>'",
+          "  }",
+          "}",
+        ],
+        note: "nextHopIpAddress is only valid with nextHopType VirtualAppliance; omit it for Internet, VnetLocal, VirtualNetworkGateway or None.",
+      },
+      {
+        id: "address-object",
+        title: "Named CIDR parameter",
+        lines: ["param {identifier}Cidr string = '{cidr}'"],
+        note: "Azure has no address-object resource. A parameter with a default keeps the prefix in one place and still allows an override per environment.",
+      },
+      {
+        id: "policy",
+        title: "Network security rule",
+        lines: [
+          "resource allow{identifier} 'Microsoft.Network/networkSecurityGroups/securityRules@2024-05-01' = {",
+          "  name: '<nsg-name>/allow-{name}'",
+          "  properties: {",
+          "    priority: <100-4096>",
+          "    direction: 'Inbound'",
+          "    access: 'Allow'",
+          "    protocol: '*'",
+          "    sourceAddressPrefix: '{cidr}'",
+          "    sourcePortRange: '*'",
+          "    destinationAddressPrefix: '*'",
+          "    destinationPortRange: '*'",
+          "  }",
+          "}",
+        ],
+        note: "Priority must be unique within the NSG. Tighten protocol and ports before production; this opens everything from the prefix.",
       },
     ],
   },

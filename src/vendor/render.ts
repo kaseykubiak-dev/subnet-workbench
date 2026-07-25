@@ -30,6 +30,19 @@ export function sanitizeName(label: string): string {
   return cleaned === "" ? "net" : cleaned;
 }
 
+/**
+ * A symbolic name legal as an identifier in Terraform HCL and Bicep.
+ *
+ * sanitizeName alone is not enough: with no label it derives the name from the
+ * CIDR, producing something like "10_0_0_0_24", and neither language accepts an
+ * identifier that starts with a digit. Config CLIs do not care, which is why
+ * this is a separate key rather than a change to sanitizeName.
+ */
+export function sanitizeIdentifier(label: string): string {
+  const name = sanitizeName(label);
+  return /^[A-Za-z_]/.test(name) ? name : `net_${name}`;
+}
+
 /** Build the substitution context for a subnet. */
 export function templateContext(subnet: Subnet & { label?: string }): VendorContext {
   const range = usableRange(subnet.network, subnet.prefix);
@@ -43,6 +56,7 @@ export function templateContext(subnet: Subnet & { label?: string }): VendorCont
     firstUsable: numberToIp(range.first),
     lastUsable: numberToIp(range.last),
     name: sanitizeName(subnet.label ?? cidr),
+    identifier: sanitizeIdentifier(subnet.label ?? cidr),
   };
 }
 
