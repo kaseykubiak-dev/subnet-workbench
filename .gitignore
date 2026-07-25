@@ -5,3 +5,6 @@ coverage/
 
 # Design mockups: kept locally for reference, not part of the published repo
 mockups/
+
+# Cloud mode research notes: working sources and corrections, kept locally
+cloud-mode-verification.md
