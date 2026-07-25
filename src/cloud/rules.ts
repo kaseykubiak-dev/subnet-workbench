@@ -250,12 +250,12 @@ export const AWS_SERVICE_RULES: AwsServiceRule[] = [
   {
     name: "Network Load Balancer",
     purpose: "NLB subnets",
-    minFreeAddresses: 8,
+    consumesPerSubnet: 1,
     minAvailabilityZones: 1,
     notes: [
-      "AWS documents a free-address count for NLB, not a prefix length. Do not apply the ALB /27 rule here.",
+      "AWS publishes the /27-and-8-free-addresses scaling requirement for ALB only. The widely repeated claim that it applies to NLB could not be traced to AWS documentation, so it is not encoded here.",
+      "What AWS does document: one address per enabled Availability Zone, one subnet per zone.",
       "Unlike ALB, a single Availability Zone is permitted.",
-      "The 8-address requirement applies to internet-facing NLBs, and to internal NLBs only when AWS assigns the private IPv4 address.",
     ],
   },
   {

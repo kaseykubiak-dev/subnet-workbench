@@ -156,10 +156,12 @@ describe("AWS service rules", () => {
     expect(alb.minAvailabilityZones).toBe(2);
   });
 
-  it("NLB documents a count only, so the ALB prefix must not leak onto it", () => {
+  it("NLB carries no prefix and no free-address count, since AWS publishes neither", () => {
     const nlb = AWS_SERVICE_RULES.find((r) => r.name === "Network Load Balancer")!;
     expect(nlb.maxPrefix).toBeUndefined();
-    expect(nlb.minFreeAddresses).toBe(8);
+    // The "NLB needs 8 free addresses" claim is secondary-source only.
+    expect(nlb.minFreeAddresses).toBeUndefined();
+    expect(nlb.consumesPerSubnet).toBe(1);
     expect(nlb.minAvailabilityZones).toBe(1);
   });
 
