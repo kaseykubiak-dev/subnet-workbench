@@ -35,6 +35,19 @@ describe("encode / decode round trip", () => {
     const payload = encodeShare(populated);
     expect(payload).toMatch(/^[A-Za-z0-9_-]+$/);
   });
+
+  it("carries the platform, so a shared link validates the same way", () => {
+    const s: ShellState = {
+      ...initialState,
+      platform: "azure",
+      calculateInput: "GatewaySubnet: 10.0.0.0/28",
+    };
+    expect(decodeShare(encodeShare(s))?.platform).toBe("azure");
+  });
+
+  it("omits the platform at the on-prem default", () => {
+    expect(decodeShare(encodeShare(populated))).not.toHaveProperty("platform");
+  });
 });
 
 describe("shareUrl", () => {
@@ -66,6 +79,14 @@ describe("decodeShare hostile input", () => {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
     expect(decodeShare(`#s=${evil}`)).toBeNull();
+  });
+
+  it("rejects an unknown platform id", () => {
+    const evil = btoa(JSON.stringify({ v: 1, platform: "gcp" }))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    expect(decodeShare(`#s=${evil}`)).not.toHaveProperty("platform");
   });
 
   it("drops fields with wrong types instead of failing", () => {

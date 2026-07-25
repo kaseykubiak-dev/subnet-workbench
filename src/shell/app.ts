@@ -23,10 +23,12 @@ import {
   selectedCalculateSubnet,
   sendToVendor,
   setMode,
+  setPlatform,
   useAsVlsmSupernet,
 } from "./state";
 import { decodeShare, shareUrl } from "./share";
 import { handoffLine, renderFooter, renderOutput, renderShell } from "./view";
+import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
 
 export interface MountOptions {
@@ -109,6 +111,14 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
     if (field === "vendorId" && el instanceof HTMLSelectElement) {
       state = { ...state, vendorId: el.value as VendorId };
       rerenderResults();
+      return;
+    }
+    if (field === "platform" && el instanceof HTMLSelectElement) {
+      // Full rerender: the platform changes the left column too (the fact
+      // block), not just the results, and the select survives because it is
+      // re-rendered with the new value already selected.
+      state = setPlatform(state, el.value as PlatformId);
+      rerenderFull();
       return;
     }
     if (el instanceof HTMLTextAreaElement && field === "calculateDraft") {

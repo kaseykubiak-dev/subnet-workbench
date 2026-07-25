@@ -12,6 +12,7 @@
 
 import type { ShellState } from "./state";
 import { initialState } from "./state";
+import { PLATFORMS } from "../cloud/platforms";
 import { VENDORS } from "../vendor/templates";
 
 const FRAGMENT_KEY = "s";
@@ -23,6 +24,7 @@ type SharePayload = { v: number } & Partial<
   Pick<
     ShellState,
     | "mode"
+    | "platform"
     | "calculateInput"
     | "calculateSelected"
     | "splitTarget"
@@ -37,6 +39,7 @@ type SharePayload = { v: number } & Partial<
 
 const SHARE_KEYS = [
   "mode",
+  "platform",
   "calculateInput",
   "calculateSelected",
   "splitTarget",
@@ -109,8 +112,12 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
   const out: Partial<ShellState> = {};
   const modes = ["calculate", "overlap", "vlsm", "vendor"];
   const vendorIds = VENDORS.map((v) => v.id as string);
+  const platformIds = PLATFORMS.map((p) => p.id as string);
   if (typeof raw["mode"] === "string" && modes.includes(raw["mode"])) {
     out.mode = raw["mode"] as ShellState["mode"];
+  }
+  if (typeof raw["platform"] === "string" && platformIds.includes(raw["platform"])) {
+    out.platform = raw["platform"] as ShellState["platform"];
   }
   for (const key of [
     "calculateInput",

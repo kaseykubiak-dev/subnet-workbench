@@ -7,11 +7,13 @@ import {
   effectiveSplitTarget,
   heldSubnetCount,
   initialState,
+  isCloudMode,
   removeCalculateEntry,
   selectCalculateEntry,
   selectedCalculateSubnet,
   sendToVendor,
   setMode,
+  setPlatform,
   useAsVlsmSupernet,
 } from "./state";
 import { clearCurrentMode } from "./app";
@@ -110,6 +112,37 @@ describe("setMode", () => {
     const s = setMode({ ...initialState, calculateInput: "10.0.0.0/24" }, "vlsm");
     expect(s.mode).toBe("vlsm");
     expect(s.calculateInput).toBe("10.0.0.0/24");
+  });
+
+  it("carries the platform across a mode switch", () => {
+    expect(setMode({ ...initialState, platform: "azure" }, "vlsm").platform).toBe("azure");
+  });
+});
+
+describe("setPlatform", () => {
+  it("defaults to on-prem so nothing changes until you ask", () => {
+    expect(initialState.platform).toBe("none");
+    expect(isCloudMode(initialState)).toBe(false);
+  });
+
+  it("switches platform without disturbing the subnets you are holding", () => {
+    const before = {
+      ...initialState,
+      mode: "overlap" as const,
+      calculateInput: "10.0.0.0/24",
+      overlapInput: "10.1.0.0/24",
+    };
+    const s = setPlatform(before, "aws");
+    expect(s.platform).toBe("aws");
+    expect(isCloudMode(s)).toBe(true);
+    expect(s.mode).toBe("overlap");
+    expect(s.calculateInput).toBe("10.0.0.0/24");
+    expect(s.overlapInput).toBe("10.1.0.0/24");
+  });
+
+  it("goes back to on-prem cleanly", () => {
+    const s = setPlatform(setPlatform(initialState, "azure"), "none");
+    expect(isCloudMode(s)).toBe(false);
   });
 });
 

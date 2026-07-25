@@ -29,6 +29,12 @@ import { renderPrefixSplit } from "../visuals/prefixSplit";
 import { renderSpaceMap } from "../visuals/spaceMap";
 import { VLSM_LEDGER_CSS, renderVlsmLedger } from "../visuals/vlsmLedger";
 import { COLOR, esc } from "../visuals/svg";
+import {
+  CLOUD_CSS,
+  renderCloudBlock,
+  renderCloudFacts,
+  renderPlatformSelect,
+} from "./cloudView";
 import type { ShellState } from "./state";
 import {
   MODES,
@@ -135,7 +141,16 @@ function fieldLabel(text: string): string {
   return `<div class="swb-field-label">${esc(text)}</div>`;
 }
 
+/**
+ * The left column. The platform fact block is appended for every mode rather
+ * than only Calculate: the platform is global state, so its constraints stay
+ * on screen wherever you are. It renders to "" at platform "none".
+ */
 export function renderInputPanel(state: ShellState): string {
+  return modeInputPanel(state) + renderCloudFacts(state);
+}
+
+function modeInputPanel(state: ShellState): string {
   switch (state.mode) {
     case "calculate": {
       const entries = calculateEntries(state);
@@ -243,6 +258,9 @@ function renderCalculateOutput(state: ShellState): string {
   const sliderDisabled = first.prefix === 32 ? " disabled" : "";
   const line = handoffLine(first);
   return (
+    // The verdict leads: on a cloud platform the question "will this deploy"
+    // outranks every derived address in the panel below it.
+    renderCloudBlock(state, first) +
     `<div class="swb-visual" id="swb-ribbon-visual">${renderBitRibbon(first.address, first.prefix, target)}</div>` +
     `<div class="swb-split-head">` +
     `<span class="swb-field-label swb-inline">Prefix split</span>` +
@@ -388,6 +406,20 @@ export function renderTabs(state: ShellState): string {
   }).join("");
 }
 
+/**
+ * The whole top bar: mode tabs on the left, platform picker on the right.
+ *
+ * The platform lives here rather than inside any mode's input panel because
+ * it applies to all of them. Kept separate from renderTabs so the tab strip
+ * keeps its own overflow context; the skewed .swb-tabbg pseudo-tabs bleed past
+ * their buttons and need clipping that the platform control must not inherit.
+ */
+export function renderTabBar(state: ShellState): string {
+  return (
+    `<div class="swb-tabs">${renderTabs(state)}</div>` + renderPlatformSelect(state)
+  );
+}
+
 export function renderFooter(state: ShellState): string {
   const mode = MODES.find((m) => m.id === state.mode);
   const held = heldSubnetCount(state);
@@ -403,7 +435,7 @@ export function renderShell(state: ShellState): string {
     `<div class="swb-app">` +
     `<span class="swb-corner swb-c-tl"></span><span class="swb-corner swb-c-tr"></span>` +
     `<span class="swb-corner swb-c-bl"></span><span class="swb-corner swb-c-br"></span>` +
-    `<div class="swb-tabs" id="swb-tabs">${renderTabs(state)}</div>` +
+    `<div class="swb-tabbar" id="swb-tabs">${renderTabBar(state)}</div>` +
     `<div class="swb-body">` +
     `<div class="swb-left" id="swb-input">${renderInputPanel(state)}</div>` +
     `<div class="swb-right" id="swb-output">${renderOutput(state)}</div>` +
@@ -426,7 +458,8 @@ export const SHELL_CSS = `
 .swb-c-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
 .swb-c-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
 .swb-c-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
-.swb-tabs { display: flex; gap: 6px; padding: 18px 24px 0; border-bottom: 1px solid var(--color-line, #e4e1dc); background: var(--color-deep, #f7f6f4); overflow: hidden; }
+.swb-tabbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 18px 24px 0; border-bottom: 1px solid var(--color-line, #e4e1dc); background: var(--color-deep, #f7f6f4); }
+.swb-tabs { display: flex; gap: 6px; overflow: hidden; }
 .swb-tab { position: relative; font-family: var(--font-display, 'Chakra Petch', sans-serif); font-size: 0.78rem; letter-spacing: 0.08em; color: var(--color-smokey, #4b4b4b); padding: 10px 22px 16px; cursor: pointer; background: none; border: none; }
 .swb-tabbg { position: absolute; inset: 2px 4px 8px; transform: skewX(-12deg); border: 1px solid transparent; transition: transform 0.15s, border-color 0.15s, background 0.15s; }
 .swb-tablbl { position: relative; z-index: 1; }
@@ -493,6 +526,11 @@ svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main 
 @media (max-width: 768px) {
   .swb-body { grid-template-columns: 1fr; }
   .swb-left { border-right: none; border-bottom: 1px solid var(--color-line, #e4e1dc); }
+  .swb-tabbar { justify-content: flex-start; }
+  .swb-tabs { overflow-x: auto; }
+  .swb-cloud-strip { gap: 12px; }
+  .swb-reserved { margin-left: 0; text-align: left; }
 }
 ${VLSM_LEDGER_CSS}
+${CLOUD_CSS}
 `.trim();

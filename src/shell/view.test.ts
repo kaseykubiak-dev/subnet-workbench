@@ -7,6 +7,7 @@ import {
   renderInputPanel,
   renderOutput,
   renderShell,
+  renderTabBar,
   renderTabs,
 } from "./view";
 import { initialState } from "./state";
@@ -57,6 +58,21 @@ describe("renderTabs", () => {
     expect(html.match(/swb-active/g)).toHaveLength(1);
     expect(html).toContain('data-mode="vlsm"');
     expect(html).toContain("Vendor Syntax");
+  });
+});
+
+describe("renderTabBar", () => {
+  it("puts the platform picker beside the tabs, not inside a mode panel", () => {
+    const html = renderTabBar(withState({ platform: "azure" }));
+    expect(html).toContain('class="swb-tabs"');
+    expect(html).toContain('data-field="platform"');
+    expect(html).toContain('value="azure" selected');
+  });
+
+  it("shows the picker on every mode, since the platform is global", () => {
+    for (const mode of ["calculate", "overlap", "vlsm", "vendor"] as const) {
+      expect(renderTabBar(withState({ mode }))).toContain('data-field="platform"');
+    }
   });
 });
 
@@ -121,6 +137,18 @@ describe("renderInputPanel", () => {
     expect(html).not.toContain('value="fortios" selected');
   });
 
+  it("appends the platform fact block on a platform, in every mode", () => {
+    for (const mode of ["calculate", "overlap", "vlsm", "vendor"] as const) {
+      const html = renderInputPanel(withState({ mode, platform: "aws" }));
+      expect(html).toContain("swb-facts");
+      expect(html).toContain("AWS constraints");
+    }
+  });
+
+  it("omits the fact block on-prem", () => {
+    expect(renderInputPanel(initialState)).not.toContain("swb-facts");
+  });
+
   it("escapes hostile textarea content", () => {
     const html = renderInputPanel(
       withState({ overlapInput: "<script>alert(1)</script>", mode: "overlap" })
@@ -158,6 +186,21 @@ describe("renderOutput / calculate", () => {
   it("disables the slider at /32", () => {
     const html = renderOutput(withState({ calculateInput: "10.0.0.1/32" }));
     expect(html).toMatch(/data-field="splitTarget"[^>]*disabled/);
+  });
+
+  it("leads with the cloud verdict on a platform and omits it on-prem", () => {
+    const onPrem = renderOutput(withState({ calculateInput: "GatewaySubnet: 10.0.0.0/28" }));
+    expect(onPrem).not.toContain("swb-verdict");
+
+    const azure = renderOutput(
+      withState({ platform: "azure", calculateInput: "GatewaySubnet: 10.0.0.0/28" })
+    );
+    expect(azure).toContain("swb-verdict");
+    expect(azure).toContain("11 / 16");
+    // The verdict sits above the bit ribbon, not under the derivation.
+    expect(azure.indexOf("swb-verdict")).toBeLessThan(
+      azure.indexOf('data-visual="bit-ribbon"')
+    );
   });
 
   it("shows the error for an invalid selected entry, the ribbon for a valid one", () => {

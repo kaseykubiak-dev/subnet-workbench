@@ -9,6 +9,7 @@
  */
 
 import { parseSubnetList } from "../engine/parse";
+import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
 
 export type Mode = "calculate" | "overlap" | "vlsm" | "vendor";
@@ -22,6 +23,16 @@ export const MODES: { id: Mode; label: string }[] = [
 
 export interface ShellState {
   mode: Mode;
+  /**
+   * Cloud platform context, global rather than per-mode.
+   *
+   * A subnet does not stop being an Azure subnet because you switched from
+   * Calculate to Overlap, so this lives beside `mode` instead of inside any
+   * one mode's fields. "none" is the default and means RFC behavior: with it
+   * set, nothing anywhere in the shell changes from how the tool behaved
+   * before cloud mode existed.
+   */
+  platform: PlatformId;
   /** Calculate: committed entries, one subnet line each. */
   calculateInput: string;
   /** Calculate: index of the selected entry. */
@@ -47,6 +58,7 @@ export interface ShellState {
 
 export const initialState: ShellState = {
   mode: "calculate",
+  platform: "none",
   calculateInput: "",
   calculateSelected: 0,
   calculateDraft: "",
@@ -63,6 +75,20 @@ export const initialState: ShellState = {
 /** Switch mode; everything else carries over (that is the point). */
 export function setMode(state: ShellState, mode: Mode): ShellState {
   return { ...state, mode };
+}
+
+/**
+ * Switch cloud platform. Deliberately touches nothing else: the platform is
+ * a lens over the same addressing, so the subnets you are holding should
+ * survive being looked at as Azure, then as AWS, then as neither.
+ */
+export function setPlatform(state: ShellState, platform: PlatformId): ShellState {
+  return { ...state, platform };
+}
+
+/** True when a cloud platform is selected (i.e. not on-prem/RFC). */
+export function isCloudMode(state: ShellState): boolean {
+  return state.platform !== "none";
 }
 
 /** Append a line to a newline-separated field without duplicating it. */
