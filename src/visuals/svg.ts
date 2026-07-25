@@ -6,25 +6,30 @@
  * slots into both the Next.js page and the single-file standalone build.
  *
  * Brand colors are emitted as `var(--color-x, #fallback)` so the visuals
- * inherit the site's V6A palette when the CSS variables exist and still
- * render correctly standalone. Alpha tints use fill-opacity/stroke-opacity
+ * inherit the site's Light Tennessee palette when the CSS variables exist
+ * and still render correctly standalone. Alpha tints use fill-opacity/stroke-opacity
  * attributes rather than rgba() so the var() fallbacks stay usable.
  */
 
-/** V6A palette, exposed as var() references with hex fallbacks. */
+/**
+ * Light Tennessee palette, exposed as var() references with hex fallbacks.
+ * Primary accent is Tennessee Orange; the second data tone (host bits) is a
+ * warm neutral smokey so the two-tone diagrams stay legible on a light panel.
+ * `white` maps to ink because diagram text sits on pale tints / white ground.
+ */
 export const COLOR = {
-  void: "var(--color-void, #020509)",
-  deep: "var(--color-deep, #040a14)",
-  panel: "var(--color-panel, #030812)",
-  blue: "var(--color-blue, #0044dd)",
-  glow: "var(--color-glow, #1155ff)",
-  bright: "var(--color-bright, #4da6ff)",
-  ice: "var(--color-ice, #b0d8ff)",
-  teal: "var(--color-teal, #00ffcc)",
-  amber: "var(--color-amber, #ffaa00)",
-  white: "var(--color-white, #eef6ff)",
-  mid: "var(--color-mid, #9dbcdf)",
-  dim: "var(--color-dim, #7fa6cd)",
+  void: "var(--color-void, #ffffff)",
+  deep: "var(--color-deep, #f7f6f4)",
+  panel: "var(--color-panel, #f1efec)",
+  blue: "var(--color-smokey, #4b4b4b)",
+  glow: "var(--color-orange, #ff8200)",
+  bright: "var(--color-smokey, #4b4b4b)",
+  ice: "var(--color-smokey, #4b4b4b)",
+  teal: "var(--color-orange, #ff8200)",
+  amber: "var(--color-orange-deep, #e07200)",
+  white: "var(--color-ink, #2a2a2a)",
+  mid: "var(--color-smokey, #4b4b4b)",
+  dim: "var(--color-smokey-light, #6e6e6e)",
 } as const;
 
 /** Font stacks matching the site's next/font variables, with fallbacks. */
@@ -116,7 +121,7 @@ export function hatchDefs(): string {
     "defs",
     {},
     stripe("swb-hatch", COLOR.amber),
-    stripe("swb-hatch-err", "#ff5566")
+    stripe("swb-hatch-err", "#d64550")
   );
 }
 

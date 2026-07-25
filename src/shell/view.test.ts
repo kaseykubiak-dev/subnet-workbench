@@ -301,7 +301,17 @@ describe("renderShell", () => {
 describe("SHELL_CSS", () => {
   it("bundles the ledger styles and uses variable fallbacks", () => {
     expect(SHELL_CSS).toContain(".swb-ledger");
-    expect(SHELL_CSS).toContain("var(--color-teal, #00ffcc)");
+    expect(SHELL_CSS).toContain("var(--color-orange, #ff8200)");
     expect(SHELL_CSS).not.toContain("rgba(var(");
+  });
+
+  it("carries the Light Tennessee chrome, not the retired dark palette", () => {
+    // The site's vendored copy is generated from this file, so a regression
+    // here would silently revert kaseykubiak.com on the next sync:site run.
+    expect(SHELL_CSS).toContain("var(--color-void, #ffffff)");
+    expect(SHELL_CSS).toContain("var(--tool-danger, #d64550)");
+    for (const retired of ["#00ffcc", "#040a14", "#eef6ff", "#ffaa00", "#4da6ff"]) {
+      expect(SHELL_CSS).not.toContain(retired);
+    }
   });
 });

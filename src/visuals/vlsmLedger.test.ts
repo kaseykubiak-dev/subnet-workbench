@@ -51,7 +51,7 @@ describe("renderVlsmLedger", () => {
     expect(packed).not.toContain(`data-block="free"`);
   });
 
-  it("renders unallocated requirements as amber rows", () => {
+  it("flags unallocated requirements with the shortfall they need", () => {
     const short = renderVlsmLedger(run("10.0.0.0/25", "Big, 100\nHuge, 100"));
     expect(short).toContain(`data-role="unallocated"`);
     expect(short).toContain("needs a /25");
@@ -81,7 +81,7 @@ describe("renderVlsmLedger", () => {
 describe("VLSM_LEDGER_CSS", () => {
   it("styles the ledger classes with brand variables", () => {
     expect(VLSM_LEDGER_CSS).toContain(".swb-ledger");
-    expect(VLSM_LEDGER_CSS).toContain("--color-teal");
+    expect(VLSM_LEDGER_CSS).toContain("--color-orange");
     expect(VLSM_LEDGER_CSS).toContain(".swb-unallocated");
   });
 });

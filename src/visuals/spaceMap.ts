@@ -112,7 +112,7 @@ function severityOf(
   return worst;
 }
 
-const ERR_COLOR = "#ff5566";
+const ERR_COLOR = "#d64550";
 
 /** Render the address-space map. */
 export function renderSpaceMap(result: OverlapResult): string {

@@ -7,22 +7,36 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Saira:wght@300;400&display=swap" rel="stylesheet">
 <style>
-  /* Site CSS variables (V6A). On kaseykubiak.com these come from the global
-     stylesheet; the shell falls back to these hexes when they are absent. */
+  /* Site CSS variables (Light Tennessee, Direction E). On kaseykubiak.com
+     these come from globals.css; mirrored here so the dev harness renders
+     the same chrome the production page does. */
   :root {
-    --color-void: #020509; --color-deep: #040a14; --color-panel: #030812;
-    --color-blue: #0044dd; --color-glow: #1155ff; --color-bright: #4da6ff; --color-ice: #b0d8ff;
-    --color-teal: #00ffcc; --color-amber: #ffaa00;
-    --color-white: #eef6ff; --color-mid: #6699cc; --color-dim: #4477aa;
-    --bord: rgba(77,166,255,0.28); --bord-teal: rgba(0,255,204,0.36);
+    /* Tennessee core */
+    --color-orange: #ff8200; --color-orange-deep: #e07200;
+    --color-smokey: #4b4b4b; --color-smokey-light: #6e6e6e;
+    --color-ink: #2a2a2a; --color-line: #e4e1dc; --color-text-inverse: #ffffff;
+    /* Backgrounds */
+    --color-void: #ffffff; --color-deep: #f7f6f4; --color-panel: #f1efec; --color-warm: #e9e6e1;
+    /* Legacy aliases */
+    --color-blue: var(--color-orange); --color-glow: var(--color-orange-deep);
+    --color-bright: var(--color-ink); --color-ice: var(--color-smokey-light);
+    --color-teal: var(--color-orange); --color-amber: var(--color-orange-deep);
+    --color-white: var(--color-ink); --color-mid: var(--color-smokey); --color-dim: #9a9a9a;
+    --bord: var(--color-line); --bord-teal: rgba(255,130,0,0.45); --bord-subtle: rgba(75,75,75,0.12);
+    /* Tool chrome */
+    --tool-cmd-bg: #161310; --tool-cmd-text: #f4ede3;
+    --tool-bord-strong: rgba(255,130,0,0.5); --tool-accent-dim: rgba(224,114,0,0.75);
+    --tool-row-hover: rgba(255,130,0,0.06); --tool-row-sel: rgba(255,130,0,0.1);
+    --tool-danger: #d64550; --tool-danger-bg: rgba(214,69,80,0.08); --tool-warn-bg: rgba(224,114,0,0.08);
+    --tool-rail: linear-gradient(90deg, transparent, var(--color-orange) 20%, var(--color-orange-deep) 80%, transparent);
     --font-display: 'Chakra Petch', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
     --font-body: 'Saira', sans-serif;
   }
   body { margin: 0; background: var(--color-void); padding: 48px 24px; }
-  .harness { max-width: 1100px; margin: 0 auto; }
-  .eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--color-teal); margin-bottom: 16px; }
-  .eyebrow::before { content: "// "; color: var(--color-amber); }
+  .harness { max-width: 1500px; margin: 0 auto; }
+  .eyebrow { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--color-orange-deep); margin-bottom: 16px; }
+  .eyebrow::before { content: "// "; color: var(--color-orange); }
 </style>
 </head>
 <body>

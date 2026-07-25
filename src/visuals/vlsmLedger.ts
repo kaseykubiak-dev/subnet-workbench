@@ -25,35 +25,35 @@ export const VLSM_LEDGER_CSS = `
 .swb-ledger-track { display: flex; gap: 4px; align-items: stretch; min-height: 84px; }
 .swb-block {
   flex-basis: 0; min-width: 56px; padding: 8px 10px; overflow: hidden;
-  background: rgba(0, 255, 204, 0.06);
-  border: 1px solid var(--bord-teal, rgba(0, 255, 204, 0.36));
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  background: rgba(255, 130, 0, 0.06);
+  border: 1px solid rgba(255, 130, 0, 0.36);
+  box-shadow: 0 6px 18px rgba(75, 75, 75, 0.12);
   transition: transform 0.15s, border-color 0.15s;
 }
-.swb-block:hover { transform: translateY(-2px); border-color: var(--color-teal, #00ffcc); }
+.swb-block:hover { transform: translateY(-2px); border-color: var(--color-orange, #ff8200); }
 .swb-block-label {
-  color: var(--color-white, #eef6ff); font-size: 0.7rem;
+  color: var(--color-ink, #2a2a2a); font-size: 0.7rem;
   letter-spacing: 0.08em; text-transform: uppercase;
   white-space: nowrap; text-overflow: ellipsis; overflow: hidden;
 }
-.swb-block-cidr { color: var(--color-teal, #00ffcc); font-size: 0.66rem; margin-top: 2px; white-space: nowrap; }
-.swb-util { height: 4px; margin-top: 8px; background: rgba(102, 153, 204, 0.2); }
-.swb-util-fill { height: 100%; background: var(--color-teal, #00ffcc); }
-.swb-block-meta { color: var(--color-mid, #9dbcdf); font-size: 0.6rem; margin-top: 6px; white-space: nowrap; }
+.swb-block-cidr { color: var(--color-orange-deep, #e07200); font-size: 0.66rem; margin-top: 2px; white-space: nowrap; }
+.swb-util { height: 4px; margin-top: 8px; background: rgba(75, 75, 75, 0.15); }
+.swb-util-fill { height: 100%; background: var(--color-orange, #ff8200); }
+.swb-block-meta { color: var(--color-smokey, #4b4b4b); font-size: 0.6rem; margin-top: 6px; white-space: nowrap; }
 .swb-block.swb-free {
   background: transparent;
-  border: 1px dashed var(--bord, rgba(77, 166, 255, 0.28));
+  border: 1px dashed rgba(75, 75, 75, 0.28);
 }
-.swb-free .swb-block-label { color: var(--color-dim, #7fa6cd); }
-.swb-free .swb-block-cidr { color: var(--color-dim, #7fa6cd); }
+.swb-free .swb-block-label { color: var(--color-smokey-light, #6e6e6e); }
+.swb-free .swb-block-cidr { color: var(--color-smokey-light, #6e6e6e); }
 .swb-unallocated {
   margin-top: 10px; padding: 6px 10px; font-size: 0.66rem;
-  color: var(--color-amber, #ffaa00);
-  border-left: 2px solid var(--color-amber, #ffaa00);
-  background: rgba(255, 170, 0, 0.06);
+  color: var(--tool-danger, #d64550);
+  border-left: 2px solid var(--tool-danger, #d64550);
+  background: var(--tool-danger-bg, rgba(214, 69, 80, 0.08));
 }
-.swb-ledger-summary { margin-top: 12px; font-size: 0.66rem; color: var(--color-mid, #9dbcdf); letter-spacing: 0.06em; }
-.swb-ledger-empty { font-size: 0.7rem; color: var(--color-dim, #7fa6cd); }
+.swb-ledger-summary { margin-top: 12px; font-size: 0.66rem; color: var(--color-smokey, #4b4b4b); letter-spacing: 0.06em; }
+.swb-ledger-empty { font-size: 0.7rem; color: var(--color-smokey-light, #6e6e6e); }
 `.trim();
 
 /** Render the block ledger for a VLSM result. */
