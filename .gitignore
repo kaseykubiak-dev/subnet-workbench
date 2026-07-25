@@ -2,3 +2,6 @@ node_modules/
 dist/
 coverage/
 *.log
+
+# Design mockups: kept locally for reference, not part of the published repo
+mockups/

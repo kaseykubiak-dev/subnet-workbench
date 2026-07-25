@@ -189,7 +189,7 @@ Visual-first is the core identity, not decoration. Every mode has a hero visual.
 
 ## Dependencies and Requirements
 
-- Existing Next.js site and its design system (Chakra Petch, IBM Plex Mono, Saira). Planned against the V6A Hybrid dark theme (teal/cyan on void); the site moved to the Light Tennessee palette in July 2026 and the workbench was rebranded to match — Tennessee Orange on white, with dark strips reserved for vendor config output.
+- Existing Next.js site and its design system (Chakra Petch, IBM Plex Mono, Saira). Planned against the V6A Hybrid dark theme (teal/cyan on void); the site moved to the Light Tennessee palette in July 2026 and the workbench was rebranded to match: Tennessee Orange on white, with dark strips reserved for vendor config output.
 - Existing static-data / client-side-only pattern from the CLI Reference Tool
 - Existing single-file HTML build tooling from the CLI Reference Tool
 - Unit test setup for the math engine — the one genuinely new requirement
