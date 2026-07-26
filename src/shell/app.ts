@@ -179,6 +179,7 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       (field === "overlapInput" ||
         field === "vlsmSupernetInput" ||
         field === "vlsmRequirementsInput" ||
+        field === "planInput" ||
         field === "vendorInput")
     ) {
       state = { ...state, [field]: el.value };
@@ -329,6 +330,8 @@ export function clearCurrentMode(state: ShellState): ShellState {
         eksPodsPerNode: initialState.eksPodsPerNode,
         eksCustomNetworking: initialState.eksCustomNetworking,
       };
+    case "plan":
+      return { ...state, planInput: "" };
     case "vendor":
       return { ...state, vendorInput: "" };
   }

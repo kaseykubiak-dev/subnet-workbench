@@ -290,14 +290,28 @@ describe("validatePlan: external ranges", () => {
     expect(f.consequence).toMatch(/partial outage/);
   });
 
-  it("uses the range's own detail as the consequence when one is given", () => {
+  it("leads with the range's own detail without dropping why it hurts", () => {
     const plan: AddressPlan = {
       platform: "azure",
       regions: [region("eastus", "10.0.0.0/8", [vnet("spoke", "10.50.0.0/24")])],
       external: [{ ...onPrem, detail: "Datacenter core; renumbering is a two-year program." }],
     };
     const f = only(validatePlan(plan).findings, "external-collision");
-    expect(f.consequence).toBe("Datacenter core; renumbering is a two-year program.");
+    expect(f.consequence).toMatch(/^Datacenter core; renumbering is a two-year program\. /);
+    expect(f.consequence).toMatch(/not yours to renumber/);
+  });
+
+  it("keeps a one-word note as context rather than as the whole consequence", () => {
+    // A trailing "# ExpressRoute" in the plan text arrives here as the detail.
+    // Standing alone it would name the link and say nothing about the cost.
+    const plan: AddressPlan = {
+      platform: "azure",
+      regions: [region("eastus", "10.0.0.0/8", [vnet("spoke", "10.50.0.0/24")])],
+      external: [{ ...onPrem, detail: "ExpressRoute" }],
+    };
+    const f = only(validatePlan(plan).findings, "external-collision");
+    expect(f.consequence).toContain("ExpressRoute. This range");
+    expect(f.consequence).not.toContain("..");
   });
 
   it("stays quiet when nothing touches the external range", () => {

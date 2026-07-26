@@ -66,6 +66,20 @@ describe("encode / decode round trip", () => {
     expect(restored?.aksMaxSurge).toBe(10);
   });
 
+  it("carries a whole address plan, indentation and all", () => {
+    // The plan is shared as typed, because the tree is what someone is asking
+    // a colleague to look at and re-typing it would lose the argument.
+    const planInput = [
+      "region eastus 10.20.0.0/14",
+      "  vnet hub 10.20.0.0/22",
+      "    GatewaySubnet 10.20.0.0/27",
+      "external on-prem 10.20.8.0/22  # ExpressRoute",
+    ].join("\n");
+    const restored = decodeShare(encodeShare({ ...initialState, mode: "plan", planInput }));
+    expect(restored?.mode).toBe("plan");
+    expect(restored?.planInput).toBe(planInput);
+  });
+
   it("carries the EKS plan including the custom-networking flag", () => {
     const s: ShellState = {
       ...initialState,

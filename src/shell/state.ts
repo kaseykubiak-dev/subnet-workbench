@@ -13,13 +13,14 @@ import type { AksNetworkMode, AksPlan, EksIpMode, EksPlan } from "../cloud/capac
 import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
 
-export type Mode = "calculate" | "overlap" | "vlsm" | "capacity" | "vendor";
+export type Mode = "calculate" | "overlap" | "vlsm" | "capacity" | "plan" | "vendor";
 
 export const MODES: { id: Mode; label: string }[] = [
   { id: "calculate", label: "Calculate" },
   { id: "overlap", label: "Overlap" },
   { id: "vlsm", label: "VLSM" },
   { id: "capacity", label: "Capacity" },
+  { id: "plan", label: "Plan" },
   { id: "vendor", label: "Vendor Syntax" },
 ];
 
@@ -92,6 +93,15 @@ export interface ShellState {
   eksIpsPerEni: number;
   eksPodsPerNode: number;
   eksCustomNetworking: boolean;
+  /**
+   * Plan: the whole address plan as indented text.
+   *
+   * One field rather than a structured tree, because the parser in
+   * src/cloud/planText.ts is the only thing that needs the structure and the
+   * textarea is what people actually paste into. It also means the plan
+   * round-trips through a share link as-typed.
+   */
+  planInput: string;
   /** Vendor: one subnet per line. */
   vendorInput: string;
   vendorId: VendorId;
@@ -123,6 +133,7 @@ export const initialState: ShellState = {
   eksIpsPerEni: 10,
   eksPodsPerNode: 17,
   eksCustomNetworking: false,
+  planInput: "",
   vendorInput: "",
   vendorId: "fortios",
 };

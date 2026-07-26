@@ -261,6 +261,24 @@ function containmentVerb(outer: Subnet, inner: Subnet): string {
 }
 
 /**
+ * What an external collision costs, with the range's own note in front of it.
+ *
+ * The note is whatever the plan author wrote beside the range, which in practice
+ * ranges from a one-word label ("ExpressRoute") to a full sentence about a
+ * multi-year renumbering program. Neither one is a substitute for saying why the
+ * collision hurts, so the note leads as context and the standing consequence
+ * follows it rather than being replaced by it.
+ */
+function externalConsequence(detail: string | undefined): string {
+  const standing =
+    "This range is not yours to renumber, so the whole repair falls on your side. " +
+    "Traffic to the overlapping addresses stays local instead of crossing the link, " +
+    "which presents as a partial outage rather than a clean failure.";
+  const note = detail?.trim().replace(/[.;,\s]+$/, "") ?? "";
+  return note === "" ? standing : `${note}. ${standing}`;
+}
+
+/**
  * Walk the whole plan and report every positional problem in it.
  *
  * Deliberately runs every check on every node rather than stopping at the first
@@ -370,9 +388,7 @@ export function validatePlan(plan: AddressPlan): PlanReport {
         kind: "external-collision",
         severity: "error",
         message: `VNet ${vnet.name} (${blockCidr(vnet)}) in ${region.name} collides with ${range.name} (${blockCidr(range)}).`,
-        consequence:
-          range.detail ??
-          "This range is not yours to renumber, so the whole repair falls on your side. Traffic to the overlapping addresses stays local instead of crossing the link, which presents as a partial outage rather than a clean failure.",
+        consequence: externalConsequence(range.detail),
         a: { region: region.name, vnet: vnet.name },
         range: overlapRange(range, vnet),
       });

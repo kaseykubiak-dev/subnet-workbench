@@ -226,6 +226,7 @@ describe("clearCurrentMode", () => {
     vlsmSupernetInput: "10.0.0.0/16",
     vlsmRequirementsInput: "A, 100",
     vlsmHeadroom: 30,
+    planInput: "vnet hub 10.0.0.0/22",
     vendorInput: "10.0.0.0/24",
   };
 
@@ -265,6 +266,12 @@ describe("clearCurrentMode", () => {
     expect(s.eksNodes).toBe(initialState.eksNodes);
     expect(s.eksCustomNetworking).toBe(false);
     // Still mode-local: the other modes' text is untouched.
+    expect(s.overlapInput).toBe("10.0.0.0/24");
+  });
+
+  it("blanks the plan text and nothing else", () => {
+    const s = clearCurrentMode({ ...populated, mode: "plan" });
+    expect(s.planInput).toBe("");
     expect(s.overlapInput).toBe("10.0.0.0/24");
   });
 });

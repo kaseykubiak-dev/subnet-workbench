@@ -42,6 +42,7 @@ type SharePayload = { v: number } & Partial<
     | "eksIpsPerEni"
     | "eksPodsPerNode"
     | "eksCustomNetworking"
+    | "planInput"
     | "vendorInput"
     | "vendorId"
   >
@@ -67,6 +68,7 @@ const SHARE_KEYS = [
   "eksIpsPerEni",
   "eksPodsPerNode",
   "eksCustomNetworking",
+  "planInput",
   "vendorInput",
   "vendorId",
 ] as const;
@@ -148,6 +150,7 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
     "overlapInput",
     "vlsmSupernetInput",
     "vlsmRequirementsInput",
+    "planInput",
     "vendorInput",
   ] as const) {
     if (typeof raw[key] === "string") out[key] = raw[key];

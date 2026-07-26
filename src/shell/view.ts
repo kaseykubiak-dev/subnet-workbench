@@ -40,6 +40,7 @@ import {
   renderCloudFacts,
   renderPlatformSelect,
 } from "./cloudView";
+import { PLAN_CSS, renderPlanInputs, renderPlanOutput } from "./planView";
 import type { ShellState } from "./state";
 import {
   MODES,
@@ -226,6 +227,8 @@ function modeInputPanel(state: ShellState): string {
       );
     case "capacity":
       return renderCapacityInputs(state);
+    case "plan":
+      return renderPlanInputs(state);
     case "vendor": {
       const options = VENDORS.map(
         (v) =>
@@ -396,6 +399,8 @@ export function renderOutput(state: ShellState): string {
       return renderVlsmOutput(state);
     case "capacity":
       return renderCapacityOutput(state);
+    case "plan":
+      return renderPlanOutput(state);
     case "vendor":
       return renderVendorOutput(state);
   }
@@ -543,4 +548,5 @@ svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main 
 ${VLSM_LEDGER_CSS}
 ${CLOUD_CSS}
 ${CAPACITY_CSS}
+${PLAN_CSS}
 `.trim();
