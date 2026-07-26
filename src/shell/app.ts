@@ -12,7 +12,7 @@ import { parseSubnetList } from "../engine/parse";
 import { allocationCidr, allocateVlsm, parseRequirementList, requirementName } from "../modes/vlsm";
 import { renderBitRibbon } from "../visuals/bitRibbon";
 import { renderPrefixSplit } from "../visuals/prefixSplit";
-import type { Mode, ShellState } from "./state";
+import type { CapacityWorkload, Mode, ShellState } from "./state";
 import {
   addToOverlap,
   commitCalculateDraft,
@@ -21,16 +21,31 @@ import {
   removeCalculateEntry,
   selectCalculateEntry,
   selectedCalculateSubnet,
+  sendToPlan,
   sendToVendor,
   setMode,
   setPlatform,
+  setServiceCount,
+  toggleService,
   useAsVlsmSupernet,
 } from "./state";
 import { decodeShare, shareUrl } from "./share";
 import { handoffLine, renderFooter, renderOutput, renderShell } from "./view";
+import { servicesEstimateFor } from "./servicesView";
 import type { AksNetworkMode, EksIpMode } from "../cloud/capacity";
+import { servicePlanText } from "../cloud/capacity";
+import { ipToNumber } from "../engine/ipv4";
 import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
+
+/**
+ * Where a generated services plan is placed before anyone renumbers it.
+ *
+ * The shape of the tree is real; the base is not. Plan mode is where the
+ * overlap checking lives, so arriving there with a valid document at a
+ * placeholder base is more useful than refusing to generate one at all.
+ */
+const SERVICE_PLAN_BASE = ipToNumber("10.0.0.0") ?? 0;
 
 /** Capacity fields that are plain integer boxes with no special empty case. */
 const CAPACITY_NUMBER_FIELDS = [
@@ -40,6 +55,11 @@ const CAPACITY_NUMBER_FIELDS = [
   "eksEnisPerNode",
   "eksIpsPerEni",
   "eksPodsPerNode",
+  "sqlMiGeneralPurpose",
+  "sqlMiBusinessCritical",
+  "sqlMiZoneRedundant",
+  "sqlMiVmGroups",
+  "appGwMaxInstances",
 ] as const;
 
 type CapacityNumberField = (typeof CAPACITY_NUMBER_FIELDS)[number];
@@ -111,6 +131,24 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
   root.addEventListener("input", (event) => {
     const el = event.target;
     if (!(el instanceof HTMLElement)) return;
+
+    // The services catalogue is keyed by consumer id rather than by a fixed
+    // field name, so it is matched before the data-field dispatch below.
+    const serviceId = el.dataset["service"];
+    if (serviceId !== undefined && el instanceof HTMLInputElement) {
+      // Full rerender: ticking a row reveals its count box and any sub-plan
+      // fields, which live in the left column the results rerender skips.
+      state = toggleService(state, serviceId);
+      rerenderFull();
+      return;
+    }
+    const countId = el.dataset["serviceCount"];
+    if (countId !== undefined && el instanceof HTMLInputElement) {
+      state = setServiceCount(state, countId, Number(el.value));
+      rerenderResults();
+      return;
+    }
+
     const field = el.dataset["field"];
     if (field === undefined) return;
 
@@ -154,6 +192,11 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
     }
     if (field === "eksCustomNetworking" && el instanceof HTMLInputElement) {
       state = { ...state, eksCustomNetworking: el.checked };
+      rerenderResults();
+      return;
+    }
+    if (field === "appGwPrivateFrontend" && el instanceof HTMLInputElement) {
+      state = { ...state, appGwPrivateFrontend: el.checked };
       rerenderResults();
       return;
     }
@@ -217,6 +260,19 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
         state = clearCurrentMode(state);
         rerenderFull();
         break;
+      case "set-workload":
+        state = {
+          ...state,
+          capacityWorkload: el.dataset["workload"] as CapacityWorkload,
+        };
+        rerenderFull();
+        break;
+      case "handoff-plan": {
+        const text = servicePlanText(servicesEstimateFor(state), SERVICE_PLAN_BASE);
+        state = sendToPlan(state, text);
+        rerenderFull();
+        break;
+      }
       case "commit-draft":
         state = commitCalculateDraft(state);
         rerenderFull();
@@ -315,8 +371,23 @@ export function clearCurrentMode(state: ShellState): ShellState {
         vlsmHeadroom: 0,
       };
     case "capacity":
-      // Capacity has no text to blank, so "clear" means back to the documented
-      // worked examples rather than back to zero nodes.
+      // Reset clears the workload on screen, not both. Someone resetting a
+      // half-built services list has no reason to lose the node counts they
+      // set up under Kubernetes, and vice versa.
+      if (state.capacityWorkload === "services") {
+        return {
+          ...state,
+          serviceCounts: {},
+          sqlMiGeneralPurpose: initialState.sqlMiGeneralPurpose,
+          sqlMiBusinessCritical: initialState.sqlMiBusinessCritical,
+          sqlMiZoneRedundant: initialState.sqlMiZoneRedundant,
+          sqlMiVmGroups: initialState.sqlMiVmGroups,
+          appGwMaxInstances: initialState.appGwMaxInstances,
+          appGwPrivateFrontend: initialState.appGwPrivateFrontend,
+        };
+      }
+      // Kubernetes has no text to blank, so "clear" means back to the
+      // documented worked examples rather than back to zero nodes.
       return {
         ...state,
         aksMode: initialState.aksMode,

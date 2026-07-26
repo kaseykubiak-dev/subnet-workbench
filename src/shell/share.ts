@@ -11,7 +11,8 @@
  */
 
 import type { ShellState } from "./state";
-import { AKS_MODES, EKS_MODES, MODES, initialState } from "./state";
+import { AKS_MODES, CAPACITY_WORKLOADS, EKS_MODES, MODES, initialState } from "./state";
+import { SERVICE_CONSUMERS } from "../cloud/capacity";
 import { PLATFORMS } from "../cloud/platforms";
 import { VENDORS } from "../vendor/templates";
 
@@ -42,6 +43,14 @@ type SharePayload = { v: number } & Partial<
     | "eksIpsPerEni"
     | "eksPodsPerNode"
     | "eksCustomNetworking"
+    | "capacityWorkload"
+    | "serviceCounts"
+    | "sqlMiGeneralPurpose"
+    | "sqlMiBusinessCritical"
+    | "sqlMiZoneRedundant"
+    | "sqlMiVmGroups"
+    | "appGwMaxInstances"
+    | "appGwPrivateFrontend"
     | "planInput"
     | "vendorInput"
     | "vendorId"
@@ -68,6 +77,14 @@ const SHARE_KEYS = [
   "eksIpsPerEni",
   "eksPodsPerNode",
   "eksCustomNetworking",
+  "capacityWorkload",
+  "serviceCounts",
+  "sqlMiGeneralPurpose",
+  "sqlMiBusinessCritical",
+  "sqlMiZoneRedundant",
+  "sqlMiVmGroups",
+  "appGwMaxInstances",
+  "appGwPrivateFrontend",
   "planInput",
   "vendorInput",
   "vendorId",
@@ -93,12 +110,28 @@ function fromBase64Url(text: string): Uint8Array | null {
   }
 }
 
+/**
+ * Whether a field still holds its default and can be left out of the payload.
+ *
+ * Reference equality is enough for every primitive field, but `serviceCounts`
+ * is an object and a fresh empty one is never `===` the initial one. Comparing
+ * by value keeps an untouched services panel from padding every link anyone
+ * copies from any other mode.
+ */
+function isDefault(key: (typeof SHARE_KEYS)[number], value: unknown): boolean {
+  const initial: unknown = initialState[key];
+  if (typeof value === "object" && value !== null) {
+    return JSON.stringify(value) === JSON.stringify(initial);
+  }
+  return value === initial;
+}
+
 /** Encode the sharable subset of state as a fragment value. */
 export function encodeShare(state: ShellState): string {
   const payload: SharePayload = { v: VERSION };
   for (const key of SHARE_KEYS) {
     const value = state[key];
-    if (value !== initialState[key] && value !== null && value !== "") {
+    if (!isDefault(key, value) && value !== null && value !== "") {
       // Payload stays Partial<ShellState>; assignment through a narrow view.
       (payload as Record<string, unknown>)[key] = value;
     }
@@ -166,13 +199,38 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
     "eksEnisPerNode",
     "eksIpsPerEni",
     "eksPodsPerNode",
+    "sqlMiGeneralPurpose",
+    "sqlMiBusinessCritical",
+    "sqlMiZoneRedundant",
+    "sqlMiVmGroups",
+    "appGwMaxInstances",
   ] as const) {
     if (typeof raw[key] === "number" && Number.isFinite(raw[key])) {
       out[key] = raw[key];
     }
   }
-  if (typeof raw["eksCustomNetworking"] === "boolean") {
-    out.eksCustomNetworking = raw["eksCustomNetworking"];
+  for (const key of ["eksCustomNetworking", "appGwPrivateFrontend"] as const) {
+    if (typeof raw[key] === "boolean") out[key] = raw[key];
+  }
+  if (
+    typeof raw["capacityWorkload"] === "string" &&
+    CAPACITY_WORKLOADS.map((w) => w.id as string).includes(raw["capacityWorkload"])
+  ) {
+    out.capacityWorkload = raw["capacityWorkload"] as ShellState["capacityWorkload"];
+  }
+  // Service ids are whitelisted against the catalogue and counts coerced to
+  // non-negative integers, so a hand-edited link cannot inject a key the
+  // renderer will look up or a count the estimator has to defend against.
+  const serviceIds = SERVICE_CONSUMERS.map((c) => c.id);
+  const rawCounts = raw["serviceCounts"];
+  if (typeof rawCounts === "object" && rawCounts !== null && !Array.isArray(rawCounts)) {
+    const counts: Record<string, number> = {};
+    for (const [id, value] of Object.entries(rawCounts as Record<string, unknown>)) {
+      if (!serviceIds.includes(id)) continue;
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      counts[id] = Math.max(0, Math.floor(value));
+    }
+    out.serviceCounts = counts;
   }
   if (typeof raw["aksMode"] === "string" && aksModes.includes(raw["aksMode"])) {
     out.aksMode = raw["aksMode"] as ShellState["aksMode"];

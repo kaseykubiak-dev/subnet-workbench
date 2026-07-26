@@ -9,7 +9,14 @@
  */
 
 import { parseSubnetList } from "../engine/parse";
-import type { AksNetworkMode, AksPlan, EksIpMode, EksPlan } from "../cloud/capacity";
+import type {
+  AksNetworkMode,
+  AksPlan,
+  EksIpMode,
+  EksPlan,
+  ServiceSelection,
+} from "../cloud/capacity";
+import { SERVICE_CONSUMERS } from "../cloud/capacity";
 import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
 
@@ -42,6 +49,21 @@ export const AKS_MODES: { id: AksNetworkMode; label: string }[] = [
 export const EKS_MODES: { id: EksIpMode; label: string }[] = [
   { id: "secondary-ip", label: "Secondary IP" },
   { id: "prefix-delegation", label: "Prefix delegation" },
+];
+
+/**
+ * The two questions Capacity mode can answer.
+ *
+ * Unlike the AKS/EKS split, which the platform decides on the user's behalf,
+ * this one is a genuine choice: Kubernetes and the managed services are two
+ * different workloads on the same platform, and someone sizing a landing zone
+ * needs both. The platform still picks which catalogue is shown.
+ */
+export type CapacityWorkload = "kubernetes" | "services";
+
+export const CAPACITY_WORKLOADS: { id: CapacityWorkload; label: string }[] = [
+  { id: "kubernetes", label: "Kubernetes" },
+  { id: "services", label: "Platform services" },
 ];
 
 export interface ShellState {
@@ -93,6 +115,33 @@ export interface ShellState {
   eksIpsPerEni: number;
   eksPodsPerNode: number;
   eksCustomNetworking: boolean;
+  /** Capacity: which of the two workloads is on screen. */
+  capacityWorkload: CapacityWorkload;
+  /**
+   * Capacity / services: consumer id to unit count.
+   *
+   * Presence in the map IS selection, which is why an unticked service is
+   * deleted rather than set to zero: zero endpoints is a thing someone might
+   * legitimately type on the way to typing twelve, and it should not make the
+   * row vanish. Keys are not filtered by platform here, so switching Azure to
+   * AWS and back keeps the counts you already entered.
+   */
+  serviceCounts: Record<string, number>;
+  /** Capacity / services: the SQL Managed Instance mix. */
+  sqlMiGeneralPurpose: number;
+  sqlMiBusinessCritical: number;
+  sqlMiZoneRedundant: number;
+  sqlMiVmGroups: number;
+  /**
+   * Capacity / services: Application Gateway sizing.
+   *
+   * The model takes a per-gateway array because gateways can be configured
+   * differently; the UI offers one number applied to every gateway, which is
+   * the common case and keeps the panel from growing a nested table. Anyone
+   * with heterogeneous gateways can cost them one at a time.
+   */
+  appGwMaxInstances: number;
+  appGwPrivateFrontend: boolean;
   /**
    * Plan: the whole address plan as indented text.
    *
@@ -133,6 +182,17 @@ export const initialState: ShellState = {
   eksIpsPerEni: 10,
   eksPodsPerNode: 17,
   eksCustomNetworking: false,
+  capacityWorkload: "kubernetes",
+  serviceCounts: {},
+  // Microsoft's smallest supported mix: one General Purpose instance, which
+  // lands on the published 32-address floor and so shows the floor doing its
+  // job the moment the row is ticked.
+  sqlMiGeneralPurpose: 1,
+  sqlMiBusinessCritical: 0,
+  sqlMiZoneRedundant: 0,
+  sqlMiVmGroups: 0,
+  appGwMaxInstances: 10,
+  appGwPrivateFrontend: true,
   planInput: "",
   vendorInput: "",
   vendorId: "fortios",
@@ -189,6 +249,76 @@ export function sendToVendor(state: ShellState, line: string): ShellState {
     mode: "vendor",
     vendorInput: appendLine(state.vendorInput, line),
   };
+}
+
+/**
+ * Hand-off: drop generated plan text into Plan mode and switch there.
+ *
+ * Unlike the other hand-offs this one REPLACES rather than appends. A services
+ * plan is a whole tree with its own supernet, so appending it under whatever
+ * was already in the box would produce an invalid document. Anything already
+ * there was a different plan, and silently welding two together would be worse
+ * than the swap.
+ */
+export function sendToPlan(state: ShellState, text: string): ShellState {
+  const trimmed = text.trim();
+  if (trimmed === "") return state;
+  return { ...state, mode: "plan", planInput: trimmed };
+}
+
+/** Toggle a service on or off. Off deletes the key; see `serviceCounts`. */
+export function toggleService(state: ShellState, id: string): ShellState {
+  const counts = { ...state.serviceCounts };
+  if (id in counts) {
+    delete counts[id];
+  } else {
+    counts[id] = 1;
+  }
+  return { ...state, serviceCounts: counts };
+}
+
+/** Set a selected service's unit count. Ticking is `toggleService`'s job. */
+export function setServiceCount(state: ShellState, id: string, count: number): ShellState {
+  if (!(id in state.serviceCounts)) return state;
+  return {
+    ...state,
+    serviceCounts: { ...state.serviceCounts, [id]: clampInt(count, 0) },
+  };
+}
+
+/**
+ * The selections the estimator wants, built from the flat state fields.
+ *
+ * The two formula services get their sub-plan attached here rather than in the
+ * view, so `estimateServices` sees the same inputs no matter who calls it. App
+ * Gateway is left without one at zero gateways: an empty instance array cannot
+ * be costed, and the estimator's "needs the configured maximum" warning says
+ * that better than a silent zero would.
+ */
+export function serviceSelectionsFor(state: ShellState): ServiceSelection[] {
+  const selections: ServiceSelection[] = [];
+  for (const consumer of SERVICE_CONSUMERS) {
+    const count = state.serviceCounts[consumer.id];
+    if (count === undefined) continue;
+    const selection: ServiceSelection = { id: consumer.id, count: clampInt(count, 0) };
+    if (consumer.id === "azure-sql-mi") {
+      selection.sqlMi = {
+        generalPurpose: clampInt(state.sqlMiGeneralPurpose, 0),
+        businessCritical: clampInt(state.sqlMiBusinessCritical, 0),
+        zoneRedundant: clampInt(state.sqlMiZoneRedundant, 0),
+        vmGroups: clampInt(state.sqlMiVmGroups, 0),
+      };
+    }
+    if (consumer.id === "azure-app-gateway" && selection.count > 0) {
+      const instances = clampInt(state.appGwMaxInstances, 1);
+      selection.appGateway = {
+        maxInstancesPerGateway: Array.from({ length: selection.count }, () => instances),
+        gatewaysWithPrivateFrontend: state.appGwPrivateFrontend ? selection.count : 0,
+      };
+    }
+    selections.push(selection);
+  }
+  return selections;
 }
 
 /** Calculate entries: the committed lines, trimmed, empties dropped. */

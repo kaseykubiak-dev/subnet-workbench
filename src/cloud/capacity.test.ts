@@ -9,11 +9,15 @@ import {
   eksMaxPods,
   estimateAks,
   estimateEks,
+  estimateServices,
   remainingCapacity,
   serviceConsumerById,
+  servicePlanText,
   sqlManagedInstanceAddresses,
   type CapacityEstimate,
+  type ServicesEstimate,
 } from "./capacity";
+import { ipToNumber } from "../engine/ipv4";
 
 function warningText(estimate: CapacityEstimate): string {
   return estimate.warnings.join(" ");
@@ -418,5 +422,267 @@ describe("remainingCapacity", () => {
     const e = estimateAks({ mode: "azure-cni-node-subnet", nodes: 50 });
     expect(e.prefix).not.toBeNull();
     expect(remainingCapacity(e.prefix!, e.addresses, "azure")).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* estimateServices                                                           */
+/* -------------------------------------------------------------------------- */
+
+function subnetById(estimate: ServicesEstimate, id: string) {
+  const found = estimate.subnets.find((s) => s.id === id);
+  expect(found, `no subnet with id ${id}`).toBeDefined();
+  return found!;
+}
+
+/**
+ * The worked Azure plan the Variant B mockup illustrates: a dozen private
+ * endpoints and a three-region Cosmos account pooling into one shared subnet,
+ * beside three delegated subnets that cannot pool with anything.
+ */
+function workedAzurePlan(): ServicesEstimate {
+  return estimateServices(
+    [
+      { id: "azure-private-endpoint", count: 12 },
+      { id: "azure-cosmos-private-endpoint", count: 3 },
+      { id: "azure-app-service-integration", count: 20 },
+      {
+        id: "azure-sql-mi",
+        count: 1,
+        sqlMi: { generalPurpose: 2, businessCritical: 1, zoneRedundant: 0, vmGroups: 1 },
+      },
+      { id: "azure-container-instances", count: 4 },
+    ],
+    "azure"
+  );
+}
+
+describe("estimateServices: sharing is what turns a service list into a plan", () => {
+  it("pools shared services into one subnet and gives every delegated service its own", () => {
+    const plan = workedAzurePlan();
+    // Four subnets from five services: the two shared ones are one subnet.
+    expect(plan.subnets.map((s) => s.id)).toEqual([
+      "shared",
+      "azure-app-service-integration",
+      "azure-sql-mi",
+      "azure-container-instances",
+    ]);
+  });
+
+  it("orders by the catalogue, not by the order things were selected", () => {
+    const forward = estimateServices(
+      [
+        { id: "azure-private-endpoint", count: 1 },
+        { id: "azure-container-instances", count: 1 },
+        { id: "azure-app-service-integration", count: 1 },
+      ],
+      "azure"
+    );
+    const backward = estimateServices(
+      [
+        { id: "azure-app-service-integration", count: 1 },
+        { id: "azure-container-instances", count: 1 },
+        { id: "azure-private-endpoint", count: 1 },
+      ],
+      "azure"
+    );
+    expect(backward.subnets.map((s) => s.id)).toEqual(forward.subnets.map((s) => s.id));
+  });
+
+  it("costs the shared subnet from the pooled count, with Cosmos paying its extra address", () => {
+    const shared = subnetById(workedAzurePlan(), "shared");
+    expect(shared.addresses).toBe(16); // 12 endpoints + (3 regions + 1)
+    expect(shared.prefix).toBe(27); // 16 + 5 reserved = 21, so a /27
+    expect(shared.sharing).toBe("shared");
+    expect(shared.delegation).toBeUndefined();
+  });
+
+  it("doubles App Service on Microsoft's advice, as its own labelled line", () => {
+    const app = subnetById(workedAzurePlan(), "azure-app-service-integration");
+    expect(app.addresses).toBe(40); // 20 instances, doubled
+    expect(app.prefix).toBe(26);
+    expect(app.delegation).toBe("Microsoft.Web/serverFarms");
+    // The doubling is a judgment the tool makes, so it has to be visible.
+    const headroom = app.lines.find((l) => l.label === "Recommended scaling headroom");
+    expect(headroom?.addresses).toBe(20);
+  });
+
+  it("converts the SQL MI formula from a total to a usable count", () => {
+    const mi = subnetById(workedAzurePlan(), "azure-sql-mi");
+    // 5 + (2 x 4) + (1 x 10) + (0 x 2) + (1 x 8) = 31, raised to the 32 floor.
+    // Those 5 ARE Azure's reserved set, so 27 addresses are usable.
+    expect(mi.addresses).toBe(27);
+    expect(mi.prefix).toBe(27);
+    expect(mi.lines.some((l) => l.label === "Raised to the published minimum")).toBe(true);
+  });
+
+  it("rolls the plan up into a committed total and the supernet that holds it", () => {
+    const plan = workedAzurePlan();
+    expect(plan.consumed).toBe(83); // 16 + 40 + 27 + 0 (ACI has no figure)
+    expect(plan.committed).toBe(144); // 32 + 64 + 32 + 16
+    expect(plan.supernetPrefix).toBe(24); // next power of two above 144 is 256
+  });
+
+  it("drops selections belonging to the other platform rather than misprice them", () => {
+    const plan = estimateServices(
+      [
+        { id: "azure-private-endpoint", count: 4 },
+        { id: "aws-nat-gateway", count: 3 },
+      ],
+      "azure"
+    );
+    expect(subnetById(plan, "shared").addresses).toBe(4);
+  });
+
+  it("ignores unknown ids so a stale share link cannot break the page", () => {
+    const plan = estimateServices([{ id: "azure-nonexistent", count: 9 }], "azure");
+    expect(plan.subnets).toEqual([]);
+  });
+
+  it("returns nothing at all on the on-prem platform, which has no services", () => {
+    const plan = estimateServices([{ id: "azure-private-endpoint", count: 12 }], "none");
+    expect(plan).toEqual({
+      subnets: [],
+      consumed: 0,
+      committed: 0,
+      supernetPrefix: null,
+      warnings: [],
+    });
+  });
+});
+
+describe("estimateServices: null is not zero", () => {
+  it("reports no figure for a service the vendor never published one for", () => {
+    const aci = subnetById(workedAzurePlan(), "azure-container-instances");
+    // Zero would claim Container Instances is free. Null says nobody knows.
+    expect(aci.addresses).toBeNull();
+    expect(aci.prefix).toBe(28); // the vendor's advice is the only signal left
+    expect(aci.prefixReason).toMatch(/no published address count/i);
+  });
+
+  it("says so out loud when a shared service cannot be added to the pool", () => {
+    // RDS shares a subnet but AWS publishes no per-instance figure, so the
+    // shared total understates it and the subnet has to admit that.
+    const plan = estimateServices(
+      [
+        { id: "aws-nat-gateway", count: 2 },
+        { id: "aws-rds", count: 5 },
+      ],
+      "aws"
+    );
+    const shared = subnetById(plan, "shared");
+    expect(shared.addresses).toBe(2);
+    expect(shared.notes.join(" ")).toMatch(/no published address count/i);
+  });
+
+  it("refuses to guess the two formula services without their sub-plan", () => {
+    const plan = estimateServices(
+      [
+        { id: "azure-sql-mi", count: 1 },
+        { id: "azure-app-gateway", count: 1 },
+      ],
+      "azure"
+    );
+    expect(subnetById(plan, "azure-sql-mi").addresses).toBeNull();
+    expect(subnetById(plan, "azure-app-gateway").addresses).toBeNull();
+    expect(plan.warnings.join(" ")).toMatch(/instance mix/i);
+    expect(plan.warnings.join(" ")).toMatch(/maximum instance count/i);
+  });
+
+  it("costs Application Gateway off configured maximums once given them", () => {
+    const plan = estimateServices(
+      [
+        {
+          id: "azure-app-gateway",
+          count: 1,
+          appGateway: { maxInstancesPerGateway: [10], gatewaysWithPrivateFrontend: 1 },
+        },
+      ],
+      "azure"
+    );
+    const gw = subnetById(plan, "azure-app-gateway");
+    expect(gw.addresses).toBe(appGatewayAddresses({
+      maxInstancesPerGateway: [10],
+      gatewaysWithPrivateFrontend: 1,
+    }));
+    expect(gw.sharing).toBe("dedicated");
+  });
+});
+
+describe("servicePrefix: minimums bind, recommendations warn", () => {
+  it("holds a small App Service subnet at the published /28 minimum", () => {
+    // One instance doubled is 2 usable, which would fit a /29. Azure will not
+    // deploy the delegation below /28, so the minimum wins.
+    const plan = estimateServices(
+      [{ id: "azure-app-service-integration", count: 1 }],
+      "azure"
+    );
+    const app = subnetById(plan, "azure-app-service-integration");
+    expect(app.addresses).toBe(2);
+    expect(app.prefix).toBe(28);
+    expect(app.prefixReason).toMatch(/published minimum is \/28/i);
+  });
+
+  it("still warns about the recommendation when the minimum is what bound it", () => {
+    // The /28 came from the hard minimum rather than the count, but the subnet
+    // is no roomier for it, so the /26 advice has to survive that path too.
+    const app = subnetById(
+      estimateServices([{ id: "azure-app-service-integration", count: 1 }], "azure"),
+      "azure-app-service-integration"
+    );
+    expect(app.warnings.join(" ")).toMatch(/\/26 or larger is recommended/i);
+  });
+
+  it("warns about the /26 recommendation without overruling the count", () => {
+    const app = subnetById(
+      estimateServices([{ id: "azure-app-service-integration", count: 2 }], "azure"),
+      "azure-app-service-integration"
+    );
+    expect(app.prefix).toBe(28); // not silently upgraded to the recommended /26
+    expect(app.warnings.join(" ")).toMatch(/\/26 or larger is recommended/i);
+  });
+
+  it("stays quiet when the computed prefix already meets the recommendation", () => {
+    const app = subnetById(workedAzurePlan(), "azure-app-service-integration");
+    expect(app.prefix).toBe(26);
+    expect(app.warnings).toEqual([]);
+  });
+
+  it("gives the AWS attachment subnet its own /28 and nothing to complain about", () => {
+    // AWS's own floor is /28 and so is its advice for attachment subnets, so
+    // the smallest legal subnet already satisfies the recommendation.
+    const plan = estimateServices([{ id: "aws-tgw-attachment", count: 2 }], "aws");
+    const tgw = subnetById(plan, "aws-tgw-attachment");
+    expect(tgw.sharing).toBe("dedicated");
+    expect(tgw.addresses).toBe(2);
+    expect(tgw.prefix).toBe(28);
+    expect(tgw.warnings).toEqual([]);
+  });
+});
+
+describe("servicePlanText: the hand-off into Plan mode", () => {
+  const base = ipToNumber("10.0.0.0")!;
+
+  it("packs largest-first so every block lands on its own boundary", () => {
+    const text = servicePlanText(workedAzurePlan(), base, "uat services");
+    expect(text.split("\n")).toEqual([
+      "vnet uat-services 10.0.0.0/24",
+      "  app-service-regional-vnet-integration 10.0.0.0/26",
+      "  shared-service-subnet 10.0.0.64/27",
+      "  sql-managed-instance 10.0.0.96/27",
+      "  azure-container-instances 10.0.0.128/28",
+    ]);
+  });
+
+  it("emits names the plan-text parser will take", () => {
+    const text = servicePlanText(workedAzurePlan(), base);
+    for (const line of text.split("\n")) {
+      const name = line.trim().split(/\s+/)[line.trim().startsWith("vnet") ? 1 : 0]!;
+      expect(name).toMatch(/^[a-z0-9-]+$/);
+    }
+  });
+
+  it("returns nothing when there is nothing to place", () => {
+    expect(servicePlanText(estimateServices([], "azure"), base)).toBe("");
   });
 });

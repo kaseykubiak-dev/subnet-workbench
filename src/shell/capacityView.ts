@@ -11,11 +11,14 @@
  *
  * Three deliberate departures from the mockup:
  *
- * 1. There is no workload toggle. Which estimator runs is decided by the
+ * 1. The workload toggle chooses between Kubernetes and platform services, not
+ *    between AKS and EKS. Which Kubernetes estimator runs is decided by the
  *    global platform: Azure gives AKS, AWS gives EKS, on-prem gives a nudge
- *    toward the picker. A local toggle would let you look at EKS numbers
- *    under Azure's constraints, which is a wrong answer the tool can simply
- *    refuse to render.
+ *    toward the picker. Letting that be a local toggle would let you look at
+ *    EKS numbers under Azure's constraints, which is a wrong answer the tool
+ *    can simply refuse to render. Services are a different matter: they are a
+ *    second workload on the SAME platform, so that one is a real choice and
+ *    the services panel lives in src/shell/servicesView.ts.
  *
  * 2. The mockup's fill bar hard-codes four segments (reserved / node / pod /
  *    free) because it draws one worked example. Here the used segments come
@@ -46,7 +49,8 @@ import {
 } from "../cloud/platforms";
 import { esc } from "../visuals/svg";
 import type { ShellState } from "./state";
-import { AKS_MODES, EKS_MODES, aksPlanFor, eksPlanFor } from "./state";
+import { AKS_MODES, CAPACITY_WORKLOADS, EKS_MODES, aksPlanFor, eksPlanFor } from "./state";
+import { renderServicesInputs, renderServicesOutput } from "./servicesView";
 
 /** Thousands separators, matching cloudView. */
 function num(value: number): string {
@@ -303,11 +307,36 @@ function selectField(
   );
 }
 
+/**
+ * The workload switch.
+ *
+ * Rendered as tabs rather than a select because there are only two and both
+ * need to be readable at a glance: someone sizing a landing zone moves between
+ * them repeatedly, and a collapsed dropdown hides the fact that the services
+ * half exists at all.
+ */
+function renderWorkloadTabs(state: ShellState): string {
+  const tabs = CAPACITY_WORKLOADS.map(
+    (w) =>
+      `<button class="swb-cap-wl${w.id === state.capacityWorkload ? " swb-cap-wl-on" : ""}" ` +
+      `data-action="set-workload" data-workload="${esc(w.id)}"` +
+      `${w.id === state.capacityWorkload ? ' aria-current="true"' : ""}>${esc(w.label)}</button>`
+  ).join("");
+  return (
+    `<div class="swb-field-label">Workload</div>` +
+    `<div class="swb-cap-wls" role="group" aria-label="Workload">${tabs}</div>`
+  );
+}
+
 /** The Capacity left column. Which estimator's inputs show is the platform's call. */
 export function renderCapacityInputs(state: ShellState): string {
+  return renderWorkloadTabs(state) + renderCapacityBody(state);
+}
+
+function renderCapacityBody(state: ShellState): string {
+  if (state.capacityWorkload === "services") return renderServicesInputs(state);
   if (state.platform === "none") {
     return (
-      `<div class="swb-field-label">Workload</div>` +
       `<p class="swb-cap-nudge">Capacity sizes a Kubernetes node subnet against a real ` +
       `platform's reserved addresses and prefix limits. Pick Azure or AWS above and the ` +
       `matching inputs appear here.</p>`
@@ -358,6 +387,7 @@ const HINT_SVG_CAPACITY =
 
 /** The Capacity right column. */
 export function renderCapacityOutput(state: ShellState): string {
+  if (state.capacityWorkload === "services") return renderServicesOutput(state);
   if (state.platform === "none") {
     return (
       `<div class="swb-hint">${HINT_SVG_CAPACITY}<p><b>Waiting on a platform.</b> ` +
@@ -417,6 +447,11 @@ export function renderCapacityOutput(state: ShellState): string {
 // ---------------------------------------------------------------------------
 
 export const CAPACITY_CSS = `
+.swb-cap-wls { display: flex; gap: 0; margin-bottom: 6px; border: 1px solid var(--color-line, #e4e1dc); }
+.swb-cap-wl { flex: 1; appearance: none; background: none; border: none; border-right: 1px solid var(--color-line, #e4e1dc); padding: 9px 10px; cursor: pointer; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.6rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--color-smokey-light, #6e6e6e); }
+.swb-cap-wl:last-child { border-right: none; }
+.swb-cap-wl:hover { color: var(--color-orange-deep, #e07200); }
+.swb-cap-wl-on { background: var(--tool-row-sel, rgba(255,130,0,0.1)); color: var(--color-orange-deep, #e07200); }
 .swb-cap-fields { display: flex; flex-wrap: wrap; gap: 12px; }
 .swb-cap-field { display: flex; flex-direction: column; }
 .swb-cap-field .swb-field-label { margin-top: 14px; }

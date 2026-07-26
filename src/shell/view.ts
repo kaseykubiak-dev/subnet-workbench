@@ -41,6 +41,7 @@ import {
   renderPlatformSelect,
 } from "./cloudView";
 import { PLAN_CSS, renderPlanInputs, renderPlanOutput } from "./planView";
+import { SERVICES_CSS } from "./servicesView";
 import type { ShellState } from "./state";
 import {
   MODES,
@@ -548,5 +549,6 @@ svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main 
 ${VLSM_LEDGER_CSS}
 ${CLOUD_CSS}
 ${CAPACITY_CSS}
+${SERVICES_CSS}
 ${PLAN_CSS}
 `.trim();

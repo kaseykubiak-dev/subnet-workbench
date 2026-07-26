@@ -24,6 +24,7 @@
  * back to being wrong.
  */
 
+import { numberToIp } from "../engine/ipv4";
 import {
   cloudUsableHosts,
   platformById,
@@ -386,11 +387,31 @@ export function estimateEks(plan: EksPlan, platformId: PlatformId = "aws"): Capa
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Whether a service can live alongside other things in a subnet.
+ *
+ * This is the field that turns a list of services into an address plan. A
+ * dozen private endpoints are a dozen addresses in one subnet you already own;
+ * a dozen App Service integrations are a dozen SUBNETS, because a delegated
+ * subnet is handed to the resource provider and can hold nothing else. Totting
+ * up addresses without this distinction produces a number that is arithmetically
+ * right and operationally useless.
+ *
+ *   shared     coexists with anything, including other shared services
+ *   dedicated  wants the subnet to itself, by requirement or vendor advice
+ *   delegated  the platform hands the subnet to a resource provider outright
+ */
+export type SubnetSharing = "shared" | "dedicated" | "delegated";
+
+/**
  * Services whose consumption is a count rather than a formula.
  *
  * `perUnit` is addresses per instance of the thing. Where a vendor publishes
  * no number, the entry says so instead of guessing, and `perUnit` is
  * undefined so a caller cannot accidentally multiply by a fiction.
+ *
+ * Prefix fields follow the same convention as rules.ts, and the figures are
+ * taken from there rather than restated: `maxPrefix` is the largest prefix
+ * NUMBER permitted, which is to say the subnet's minimum size.
  */
 export interface ServiceConsumer {
   id: string;
@@ -400,8 +421,30 @@ export interface ServiceConsumer {
   perUnit?: number;
   /** What one unit is: an endpoint, an instance, an Availability Zone. */
   unit: string;
+  /** Whether this service can share a subnet. See SubnetSharing. */
+  sharing: SubnetSharing;
+  /** The Azure subnet delegation the service requires, when it needs one. */
+  delegation?: string;
+  /** Largest prefix number the vendor permits: the subnet's minimum size. */
+  maxPrefix?: number;
+  /** Largest prefix number the vendor advises. Advice, so it warns, not fails. */
+  recommendedMaxPrefix?: number;
   notes: string[];
 }
+
+/**
+ * Minimum addresses and prefix a SQL MI subnet requires regardless of size.
+ *
+ * Declared above SERVICE_CONSUMERS rather than beside
+ * sqlManagedInstanceAddresses because the table below cites the prefix, and a
+ * const referenced during another const's initialization has to be in scope
+ * already.
+ */
+export const SQL_MI_MINIMUM_ADDRESSES = 32;
+export const SQL_MI_MINIMUM_PREFIX = 27;
+
+/** Ceiling on the maximum instance count for Application Gateway v2. */
+export const APP_GATEWAY_V2_MAX_INSTANCES = 125;
 
 export const SERVICE_CONSUMERS: ServiceConsumer[] = [
   {
@@ -410,6 +453,7 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     platform: "azure",
     perUnit: 1,
     unit: "endpoint",
+    sharing: "shared",
     notes: [
       "One address per endpoint NIC. Sub-resources need separate endpoints, so a storage account using both blob and file is two endpoints and two addresses.",
     ],
@@ -418,7 +462,8 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     id: "azure-cosmos-private-endpoint",
     name: "Cosmos DB private endpoint",
     platform: "azure",
-    unit: "account",
+    unit: "account region",
+    sharing: "shared",
     notes: [
       "The exception to the one-address rule: a Cosmos endpoint reserves one address per account region plus one for the region-agnostic endpoint, so the count is regions + 1.",
       "Adding a region to the account grows the reservation after the subnet is already deployed.",
@@ -430,6 +475,10 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     platform: "azure",
     perUnit: 1,
     unit: "plan instance",
+    sharing: "delegated",
+    delegation: "Microsoft.Web/serverFarms",
+    maxPrefix: 28,
+    recommendedMaxPrefix: 26,
     notes: [
       "The subnet gives up 5 addresses at the start, then one per App Service plan instance.",
       "Scaling temporarily doubles consumption and addresses can take up to 12 hours to be released, so Microsoft recommends allocating double the planned maximum scale.",
@@ -441,6 +490,9 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     name: "SQL Managed Instance",
     platform: "azure",
     unit: "instance",
+    sharing: "delegated",
+    delegation: "Microsoft.Sql/managedInstances",
+    maxPrefix: SQL_MI_MINIMUM_PREFIX,
     notes: [
       "Not a flat per-instance count. See sqlManagedInstanceAddresses for the published formula.",
       "Hard minimum 32 addresses and a /27 mask regardless of how small the deployment is.",
@@ -451,9 +503,25 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     name: "Azure Container Instances",
     platform: "azure",
     unit: "container group",
+    sharing: "delegated",
+    delegation: "Microsoft.ContainerInstance/containerGroups",
+    recommendedMaxPrefix: 28,
     notes: [
       "Microsoft publishes no per-container-group address count. The documentation only advises sizing a /28 rather than a /29 so there is buffer, which implies roughly one address per group.",
       "The subnet is delegated and can hold nothing but container groups. Ceiling is 3000 groups per subnet.",
+    ],
+  },
+  {
+    id: "azure-app-gateway",
+    name: "Application Gateway v2",
+    platform: "azure",
+    unit: "gateway",
+    sharing: "dedicated",
+    recommendedMaxPrefix: 24,
+    notes: [
+      "Not a flat per-gateway count. See appGatewayAddresses: Azure subtracts each gateway's CONFIGURED maximum instance count, not the 125 ceiling, plus one address per gateway with a private frontend IP.",
+      "A /24 is highly recommended rather than required, and sizing to the 125 ceiling when the gateway is capped at 10 is where the blanket /24 advice came from.",
+      "Dedicated to Application Gateway; do not mix other resources into the subnet.",
     ],
   },
   {
@@ -462,6 +530,7 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     platform: "aws",
     perUnit: 1,
     unit: "gateway",
+    sharing: "shared",
     notes: [
       "One primary private address, which cannot be changed after creation.",
       "Up to 8 total addresses if secondary addresses are assigned for port-allocation headroom.",
@@ -473,6 +542,7 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     platform: "aws",
     perUnit: 1,
     unit: "subnet",
+    sharing: "shared",
     notes: [
       "One ENI per selected subnet, at most one subnet per Availability Zone.",
       "Gateway endpoints for S3 and DynamoDB are route table entries and consume nothing.",
@@ -484,6 +554,7 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     platform: "aws",
     perUnit: 1,
     unit: "Availability Zone",
+    sharing: "shared",
     notes: [
       "One address per enabled Availability Zone.",
       "The 8-free-address and /27 requirements AWS publishes are for Application Load Balancer. No AWS source states they apply to NLB.",
@@ -495,6 +566,8 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     platform: "aws",
     perUnit: 1,
     unit: "Availability Zone",
+    sharing: "dedicated",
+    recommendedMaxPrefix: 28,
     notes: [
       "One ENI and one address per zone, per attachment.",
       "AWS recommends a dedicated /28 per attachment subnet, ideally on a secondary non-routable CIDR to preserve routable space.",
@@ -505,6 +578,7 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     name: "RDS instance",
     platform: "aws",
     unit: "instance",
+    sharing: "shared",
     notes: [
       "One address per instance plus unpublished headroom: AWS says only that the subnet must be large enough for spare addresses used during failover and compute scaling, and offers a /24 as a rough hint.",
       "Because the headroom is undocumented, this cannot be modeled precisely. Size generously.",
@@ -515,6 +589,7 @@ export const SERVICE_CONSUMERS: ServiceConsumer[] = [
     name: "Lambda VPC attachment",
     platform: "aws",
     unit: "subnet and security group pair",
+    sharing: "shared",
     notes: [
       "One Hyperplane ENI per unique subnet and security group combination, shared across every function and version using that pair.",
       "The count scales with concurrency and AWS publishes no formula. ENIs are reclaimed after roughly 14 idle days.",
@@ -537,10 +612,6 @@ export interface SqlManagedInstancePlan {
   /** Virtual cluster groups; at least one exists per subnet in use. */
   vmGroups: number;
 }
-
-/** Minimum addresses and prefix a SQL MI subnet requires regardless of size. */
-export const SQL_MI_MINIMUM_ADDRESSES = 32;
-export const SQL_MI_MINIMUM_PREFIX = 27;
 
 /**
  * Addresses for a SQL Managed Instance subnet.
@@ -572,9 +643,6 @@ export interface AppGatewayPlan {
   /** How many of those gateways have a private frontend IP configuration. */
   gatewaysWithPrivateFrontend: number;
 }
-
-/** Ceiling on the maximum instance count for Application Gateway v2. */
-export const APP_GATEWAY_V2_MAX_INSTANCES = 125;
 
 /**
  * Addresses an Application Gateway v2 subnet needs.
@@ -617,4 +685,404 @@ export function remainingCapacity(
 ): number {
   const platform: Platform = platformById(platformId);
   return cloudUsableHosts(prefix, platform) - consumed;
+}
+
+/* -------------------------------------------------------------------------- */
+/* A whole services plan                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One service someone has put in their plan, with the count they typed.
+ *
+ * `count` means whatever the consumer's `unit` says, so it is endpoints for a
+ * private endpoint and account REGIONS for Cosmos. The two formula services
+ * ignore it entirely and read their own sub-plan instead; when that sub-plan is
+ * missing the estimate reports no figure rather than inventing inputs.
+ */
+export interface ServiceSelection {
+  id: string;
+  count: number;
+  sqlMi?: SqlManagedInstancePlan;
+  appGateway?: AppGatewayPlan;
+}
+
+/**
+ * One subnet a services plan requires.
+ *
+ * `addresses` is null when the vendor publishes no figure to compute from. That
+ * is not the same as zero, and the two must not be rendered the same way: zero
+ * means the service costs nothing, null means nobody knows what it costs.
+ */
+export interface ServiceSubnet {
+  /** Stable id: a consumer id, or "shared" for the pooled subnet. */
+  id: string;
+  name: string;
+  sharing: SubnetSharing;
+  delegation?: string;
+  /** Usable addresses required, or null when there is no published figure. */
+  addresses: number | null;
+  /** Smallest prefix that satisfies the count and any published minimum. */
+  prefix: number | null;
+  /** Why the prefix is what it is, in one sentence. */
+  prefixReason: string;
+  lines: CapacityLine[];
+  warnings: string[];
+  notes: string[];
+}
+
+export interface ServicesEstimate {
+  subnets: ServiceSubnet[];
+  /** Usable addresses the services actually consume, across every subnet. */
+  consumed: number;
+  /** Address space committed once each subnet is rounded up to a prefix. */
+  committed: number;
+  /** Prefix of the smallest block holding every subnet, or null when empty. */
+  supernetPrefix: number | null;
+  warnings: string[];
+}
+
+/** Total addresses in a prefix, guarding the /0 .. /32 range. */
+function blockSize(prefix: number): number {
+  return 2 ** (32 - prefix);
+}
+
+/**
+ * Usable addresses one selected service consumes, with its arithmetic.
+ *
+ * Every branch returns USABLE addresses, matching estimateAks and estimateEks,
+ * so the platform's reserved set is added exactly once when the prefix is
+ * chosen. SQL MI is the one that needs converting: Microsoft's formula opens
+ * with a literal 5, which IS Azure's reserved set, so it returns a total rather
+ * than a usable count and the reserved addresses come back off here.
+ */
+function serviceAddresses(
+  consumer: ServiceConsumer,
+  selection: ServiceSelection,
+  platform: Platform
+): { addresses: number | null; lines: CapacityLine[]; warnings: string[] } {
+  const lines: CapacityLine[] = [];
+  const warnings: string[] = [];
+  const count = Math.max(0, Math.floor(selection.count));
+
+  switch (consumer.id) {
+    case "azure-cosmos-private-endpoint": {
+      const addresses = count + 1;
+      lines.push({
+        label: `${count} account region${count === 1 ? "" : "s"}, plus one`,
+        addresses,
+        detail:
+          "The exception to the one-address-per-endpoint rule. Adding a region later grows the " +
+          "reservation after the subnet is already deployed.",
+      });
+      return { addresses, lines, warnings };
+    }
+
+    case "azure-app-service-integration": {
+      // Microsoft recommends allocating double the planned maximum scale,
+      // because scaling temporarily doubles consumption and released addresses
+      // can take 12 hours to come back. That doubling is a judgment the tool
+      // makes on the user's behalf, so it gets its own labelled line rather
+      // than being folded silently into the instance count.
+      lines.push({
+        label: `${count} plan instance${count === 1 ? "" : "s"}`,
+        addresses: count,
+        detail: "One address per App Service plan instance.",
+      });
+      lines.push({
+        label: "Recommended scaling headroom",
+        addresses: count,
+        detail:
+          "Microsoft advises allocating double the planned maximum scale: scaling temporarily " +
+          "doubles consumption and released addresses can take up to 12 hours to return.",
+      });
+      return { addresses: count * 2, lines, warnings };
+    }
+
+    case "azure-sql-mi": {
+      if (selection.sqlMi === undefined) {
+        warnings.push(
+          "SQL Managed Instance sizing needs the instance mix. Without it there is no figure to compute."
+        );
+        return { addresses: null, lines, warnings };
+      }
+      const total = sqlManagedInstanceAddresses(selection.sqlMi);
+      const p = selection.sqlMi;
+      const addresses = Math.max(0, total - platform.reservedPerSubnet);
+      lines.push({
+        label: "Published formula",
+        addresses,
+        detail:
+          `5 + (${p.generalPurpose} x 4) + (${p.businessCritical} x 10) + ` +
+          `(${p.zoneRedundant} x 2) + (${p.vmGroups} x 8) = ${total} total addresses, of which ` +
+          `${platform.reservedPerSubnet} are Azure's reserved set. The 4 and the 10 are already ` +
+          `double the steady state, because SQL MI scales by standing up replacement nodes ` +
+          `alongside the existing ones.`,
+      });
+      if (total === SQL_MI_MINIMUM_ADDRESSES) {
+        lines.push({
+          label: "Raised to the published minimum",
+          addresses: 0,
+          detail: `${SQL_MI_MINIMUM_ADDRESSES} addresses and a /${SQL_MI_MINIMUM_PREFIX} are required regardless of how small the deployment is.`,
+        });
+      }
+      return { addresses, lines, warnings };
+    }
+
+    case "azure-app-gateway": {
+      if (selection.appGateway === undefined) {
+        warnings.push(
+          "Application Gateway sizing needs each gateway's configured maximum instance count."
+        );
+        return { addresses: null, lines, warnings };
+      }
+      let addresses: number;
+      try {
+        addresses = appGatewayAddresses(selection.appGateway);
+      } catch {
+        warnings.push("That Application Gateway configuration cannot be costed.");
+        return { addresses: null, lines, warnings };
+      }
+      const plan = selection.appGateway;
+      lines.push({
+        label: `${plan.maxInstancesPerGateway.length} gateway${plan.maxInstancesPerGateway.length === 1 ? "" : "s"}`,
+        addresses,
+        detail:
+          `Maximum instance counts ${plan.maxInstancesPerGateway.join(" + ")}, plus one address for ` +
+          `each of ${plan.gatewaysWithPrivateFrontend} with a private frontend. Azure subtracts the ` +
+          `CONFIGURED maximum, not the ${APP_GATEWAY_V2_MAX_INSTANCES} ceiling.`,
+      });
+      return { addresses, lines, warnings };
+    }
+
+    default: {
+      if (consumer.perUnit === undefined) {
+        // The honest branch. Container Instances, RDS and Lambda have no
+        // published per-unit figure, so there is nothing to multiply and the
+        // subnet is sized from the vendor's prefix advice alone.
+        return { addresses: null, lines, warnings };
+      }
+      const addresses = count * consumer.perUnit;
+      lines.push({
+        label: `${count} ${consumer.unit}${count === 1 ? "" : "s"}`,
+        addresses,
+        detail: `${consumer.perUnit} address per ${consumer.unit}.`,
+      });
+      return { addresses, lines, warnings };
+    }
+  }
+}
+
+/**
+ * The prefix a service's own subnet needs, and the sentence explaining it.
+ *
+ * A published minimum (`maxPrefix`) is binding, because deploying below it
+ * fails. A recommendation (`recommendedMaxPrefix`) is not made binding when
+ * there is a real count to size from — forcing a /26 on four App Service
+ * instances would be the tool overruling the user — but it does become the
+ * whole answer when no count exists, since it is then the only sizing signal
+ * the vendor has given.
+ */
+function servicePrefix(
+  consumer: ServiceConsumer,
+  addresses: number | null,
+  platform: Platform
+): { prefix: number | null; reason: string; warnings: string[] } {
+  const warnings: string[] = [];
+
+  if (addresses === null) {
+    const advised = consumer.recommendedMaxPrefix ?? consumer.maxPrefix ?? null;
+    if (advised === null) {
+      return {
+        prefix: null,
+        reason: "No published address count and no published minimum size. Size this one by hand.",
+        warnings,
+      };
+    }
+    return {
+      prefix: advised,
+      reason: `No published address count, so this is the vendor's sizing advice: /${advised}.`,
+      warnings,
+    };
+  }
+
+  const computed = prefixForHosts(addresses, platform);
+  if (computed === null) {
+    warnings.push(
+      `${addresses} addresses exceeds what a single ${platform.name} subnet can hold.`
+    );
+    return { prefix: null, reason: "Nothing this platform offers is large enough.", warnings };
+  }
+
+  const floor = consumer.maxPrefix;
+  const bound = floor !== undefined && computed > floor;
+  const prefix = bound ? floor! : computed;
+
+  // The recommendation is checked against the prefix actually chosen, not the
+  // computed one, because a subnet held at its published minimum is still a
+  // subnet with no room to grow. Skipping the advice whenever the minimum
+  // happened to bind would silence it exactly where it matters most.
+  const advised = consumer.recommendedMaxPrefix;
+  if (advised !== undefined && prefix > advised) {
+    warnings.push(
+      `A /${advised} or larger is recommended for ${consumer.name}. A /${prefix} holds the current count, ` +
+        `with no room to grow into.`
+    );
+  }
+
+  return {
+    prefix,
+    reason: bound
+      ? `${addresses} addresses would fit a /${computed}, but the published minimum is /${floor}.`
+      : `Smallest ${platform.name} subnet holding ${addresses} usable addresses.`,
+    warnings,
+  };
+}
+
+/**
+ * A services plan resolved into the subnets it actually requires.
+ *
+ * The shared subnet comes first when anything pools into it, then one subnet
+ * per dedicated or delegated service in catalogue order. Selections belonging
+ * to the other platform are dropped rather than costed under the wrong reserved
+ * count, and unknown ids are ignored so a stale shared link cannot break the
+ * page.
+ */
+export function estimateServices(
+  selections: ServiceSelection[],
+  platformId: PlatformId
+): ServicesEstimate {
+  const empty: ServicesEstimate = {
+    subnets: [],
+    consumed: 0,
+    committed: 0,
+    supernetPrefix: null,
+    warnings: [],
+  };
+  if (platformId === "none") return empty;
+  const platform = platformById(platformId);
+
+  const warnings: string[] = [];
+  const sharedLines: CapacityLine[] = [];
+  const sharedNotes: string[] = [];
+  const dedicated: ServiceSubnet[] = [];
+  let sharedAddresses = 0;
+  let anythingShared = false;
+
+  // Catalogue order rather than the order things were clicked, so the panel
+  // does not reshuffle itself while someone is reading it.
+  for (const consumer of SERVICE_CONSUMERS) {
+    if (consumer.platform !== platformId) continue;
+    const selection = selections.find((s) => s.id === consumer.id);
+    if (selection === undefined) continue;
+
+    const { addresses, lines, warnings: w } = serviceAddresses(consumer, selection, platform);
+    warnings.push(...w);
+
+    if (consumer.sharing === "shared") {
+      anythingShared = true;
+      if (addresses === null) {
+        // A shared service with no published figure cannot be added to a sum,
+        // but hiding it would let someone believe the subnet is fully costed.
+        sharedNotes.push(
+          `${consumer.name} shares this subnet but has no published address count, so the total below understates it.`
+        );
+        continue;
+      }
+      sharedAddresses += addresses;
+      sharedLines.push(...lines);
+      continue;
+    }
+
+    const { prefix, reason, warnings: pw } = servicePrefix(consumer, addresses, platform);
+    dedicated.push({
+      id: consumer.id,
+      name: consumer.name,
+      sharing: consumer.sharing,
+      ...(consumer.delegation === undefined ? {} : { delegation: consumer.delegation }),
+      addresses,
+      prefix,
+      prefixReason: reason,
+      lines,
+      warnings: pw,
+      notes: consumer.notes,
+    });
+  }
+
+  const subnets: ServiceSubnet[] = [];
+  if (anythingShared) {
+    const shared = servicePrefix(
+      { id: "shared", name: "Shared service subnet", platform: "azure", unit: "", sharing: "shared", notes: [] },
+      sharedAddresses,
+      platform
+    );
+    subnets.push({
+      id: "shared",
+      name: "Shared service subnet",
+      sharing: "shared",
+      addresses: sharedAddresses,
+      prefix: shared.prefix,
+      prefixReason: shared.reason,
+      lines: sharedLines,
+      warnings: shared.warnings,
+      notes: sharedNotes,
+    });
+  }
+  subnets.push(...dedicated);
+
+  const consumed = subnets.reduce((t, s) => t + (s.addresses ?? 0), 0);
+  const committed = subnets.reduce(
+    (t, s) => t + (s.prefix === null ? 0 : blockSize(s.prefix)),
+    0
+  );
+
+  // Every subnet is a power of two, so packing them largest-first wastes
+  // nothing and the smallest supernet is simply the next power of two up.
+  let supernetPrefix: number | null = null;
+  if (committed > 0) {
+    let size = 1;
+    while (size < committed) size *= 2;
+    supernetPrefix = 32 - Math.log2(size);
+  }
+
+  return { subnets, consumed, committed, supernetPrefix, warnings };
+}
+
+/** A name the plan-text parser will accept: no spaces, no punctuation. */
+function planName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * The plan laid out as Plan-mode text, packed into a supernet at `base`.
+ *
+ * This is the hand-off that makes Capacity and Plan one workflow rather than
+ * two calculators. The addresses are real and correctly aligned but the base is
+ * a placeholder: nobody's services live at 10.0.0.0 by coincidence, so the
+ * point is to arrive in Plan mode with a valid tree of the right SHAPE and
+ * renumber it there, where the overlap checking lives.
+ *
+ * Blocks are laid largest-first, which for powers of two means every one lands
+ * on its own boundary with no gaps.
+ */
+export function servicePlanText(
+  estimate: ServicesEstimate,
+  base: number,
+  label = "services"
+): string {
+  const placed = estimate.subnets
+    .filter((s): s is ServiceSubnet & { prefix: number } => s.prefix !== null)
+    .slice()
+    .sort((a, b) => a.prefix - b.prefix);
+  if (placed.length === 0 || estimate.supernetPrefix === null) return "";
+
+  const lines = [`vnet ${planName(label)} ${numberToIp(base)}/${estimate.supernetPrefix}`];
+  let cursor = base;
+  for (const subnet of placed) {
+    lines.push(`  ${planName(subnet.name)} ${numberToIp(cursor)}/${subnet.prefix}`);
+    cursor += blockSize(subnet.prefix);
+  }
+  return lines.join("\n");
 }
