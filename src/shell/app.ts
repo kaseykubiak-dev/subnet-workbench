@@ -28,8 +28,25 @@ import {
 } from "./state";
 import { decodeShare, shareUrl } from "./share";
 import { handoffLine, renderFooter, renderOutput, renderShell } from "./view";
+import type { AksNetworkMode, EksIpMode } from "../cloud/capacity";
 import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
+
+/** Capacity fields that are plain integer boxes with no special empty case. */
+const CAPACITY_NUMBER_FIELDS = [
+  "aksNodes",
+  "aksMaxSurge",
+  "eksNodes",
+  "eksEnisPerNode",
+  "eksIpsPerEni",
+  "eksPodsPerNode",
+] as const;
+
+type CapacityNumberField = (typeof CAPACITY_NUMBER_FIELDS)[number];
+
+function isCapacityNumberField(field: string): field is CapacityNumberField {
+  return (CAPACITY_NUMBER_FIELDS as readonly string[]).includes(field);
+}
 
 export interface MountOptions {
   /** Location fragment to restore state from (opt-in share links). */
@@ -119,6 +136,37 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       // re-rendered with the new value already selected.
       state = setPlatform(state, el.value as PlatformId);
       rerenderFull();
+      return;
+    }
+    if (isCapacityNumberField(field) && el instanceof HTMLInputElement) {
+      // Values stay unclamped in state so a half-typed "" or "-" does not fight
+      // the cursor; aksPlanFor / eksPlanFor clamp at the point of use.
+      state = { ...state, [field]: Number(el.value) };
+      rerenderResults();
+      return;
+    }
+    if (field === "aksMaxPods" && el instanceof HTMLInputElement) {
+      // Empty means "the mode's default", which is a real choice rather than
+      // zero pods, so it round-trips as null instead of collapsing to a number.
+      state = { ...state, aksMaxPods: el.value.trim() === "" ? null : Number(el.value) };
+      rerenderResults();
+      return;
+    }
+    if (field === "eksCustomNetworking" && el instanceof HTMLInputElement) {
+      state = { ...state, eksCustomNetworking: el.checked };
+      rerenderResults();
+      return;
+    }
+    if (field === "aksMode" && el instanceof HTMLSelectElement) {
+      // Full rerender: the mode changes the max-pods placeholder in the left
+      // column, which is the only cue for what an empty box will assume.
+      state = { ...state, aksMode: el.value as AksNetworkMode };
+      rerenderFull();
+      return;
+    }
+    if (field === "eksMode" && el instanceof HTMLSelectElement) {
+      state = { ...state, eksMode: el.value as EksIpMode };
+      rerenderResults();
       return;
     }
     if (el instanceof HTMLTextAreaElement && field === "calculateDraft") {
@@ -264,6 +312,22 @@ export function clearCurrentMode(state: ShellState): ShellState {
         vlsmSupernetInput: "",
         vlsmRequirementsInput: "",
         vlsmHeadroom: 0,
+      };
+    case "capacity":
+      // Capacity has no text to blank, so "clear" means back to the documented
+      // worked examples rather than back to zero nodes.
+      return {
+        ...state,
+        aksMode: initialState.aksMode,
+        aksNodes: initialState.aksNodes,
+        aksMaxPods: initialState.aksMaxPods,
+        aksMaxSurge: initialState.aksMaxSurge,
+        eksMode: initialState.eksMode,
+        eksNodes: initialState.eksNodes,
+        eksEnisPerNode: initialState.eksEnisPerNode,
+        eksIpsPerEni: initialState.eksIpsPerEni,
+        eksPodsPerNode: initialState.eksPodsPerNode,
+        eksCustomNetworking: initialState.eksCustomNetworking,
       };
     case "vendor":
       return { ...state, vendorInput: "" };

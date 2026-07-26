@@ -11,7 +11,7 @@
  */
 
 import type { ShellState } from "./state";
-import { initialState } from "./state";
+import { AKS_MODES, EKS_MODES, MODES, initialState } from "./state";
 import { PLATFORMS } from "../cloud/platforms";
 import { VENDORS } from "../vendor/templates";
 
@@ -32,6 +32,16 @@ type SharePayload = { v: number } & Partial<
     | "vlsmSupernetInput"
     | "vlsmRequirementsInput"
     | "vlsmHeadroom"
+    | "aksMode"
+    | "aksNodes"
+    | "aksMaxPods"
+    | "aksMaxSurge"
+    | "eksMode"
+    | "eksNodes"
+    | "eksEnisPerNode"
+    | "eksIpsPerEni"
+    | "eksPodsPerNode"
+    | "eksCustomNetworking"
     | "vendorInput"
     | "vendorId"
   >
@@ -47,6 +57,16 @@ const SHARE_KEYS = [
   "vlsmSupernetInput",
   "vlsmRequirementsInput",
   "vlsmHeadroom",
+  "aksMode",
+  "aksNodes",
+  "aksMaxPods",
+  "aksMaxSurge",
+  "eksMode",
+  "eksNodes",
+  "eksEnisPerNode",
+  "eksIpsPerEni",
+  "eksPodsPerNode",
+  "eksCustomNetworking",
   "vendorInput",
   "vendorId",
 ] as const;
@@ -110,9 +130,13 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
   if (raw["v"] !== VERSION) return null;
 
   const out: Partial<ShellState> = {};
-  const modes = ["calculate", "overlap", "vlsm", "vendor"];
+  // Derived from the registries rather than restated, so adding a mode or a
+  // platform can never silently leave a shared link undecodable.
+  const modes = MODES.map((m) => m.id as string);
   const vendorIds = VENDORS.map((v) => v.id as string);
   const platformIds = PLATFORMS.map((p) => p.id as string);
+  const aksModes = AKS_MODES.map((m) => m.id as string);
+  const eksModes = EKS_MODES.map((m) => m.id as string);
   if (typeof raw["mode"] === "string" && modes.includes(raw["mode"])) {
     out.mode = raw["mode"] as ShellState["mode"];
   }
@@ -128,10 +152,30 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
   ] as const) {
     if (typeof raw[key] === "string") out[key] = raw[key];
   }
-  for (const key of ["calculateSelected", "splitTarget", "vlsmHeadroom"] as const) {
+  for (const key of [
+    "calculateSelected",
+    "splitTarget",
+    "vlsmHeadroom",
+    "aksNodes",
+    "aksMaxPods",
+    "aksMaxSurge",
+    "eksNodes",
+    "eksEnisPerNode",
+    "eksIpsPerEni",
+    "eksPodsPerNode",
+  ] as const) {
     if (typeof raw[key] === "number" && Number.isFinite(raw[key])) {
       out[key] = raw[key];
     }
+  }
+  if (typeof raw["eksCustomNetworking"] === "boolean") {
+    out.eksCustomNetworking = raw["eksCustomNetworking"];
+  }
+  if (typeof raw["aksMode"] === "string" && aksModes.includes(raw["aksMode"])) {
+    out.aksMode = raw["aksMode"] as ShellState["aksMode"];
+  }
+  if (typeof raw["eksMode"] === "string" && eksModes.includes(raw["eksMode"])) {
+    out.eksMode = raw["eksMode"] as ShellState["eksMode"];
   }
   if (typeof raw["vendorId"] === "string" && vendorIds.includes(raw["vendorId"])) {
     out.vendorId = raw["vendorId"] as ShellState["vendorId"];

@@ -48,6 +48,51 @@ describe("encode / decode round trip", () => {
   it("omits the platform at the on-prem default", () => {
     expect(decodeShare(encodeShare(populated))).not.toHaveProperty("platform");
   });
+
+  it("carries a whole capacity plan", () => {
+    const s: ShellState = {
+      ...initialState,
+      mode: "capacity",
+      platform: "azure",
+      aksMode: "azure-cni-overlay",
+      aksNodes: 120,
+      aksMaxPods: 250,
+      aksMaxSurge: 10,
+    };
+    const restored = decodeShare(encodeShare(s));
+    expect(restored?.aksMode).toBe("azure-cni-overlay");
+    expect(restored?.aksNodes).toBe(120);
+    expect(restored?.aksMaxPods).toBe(250);
+    expect(restored?.aksMaxSurge).toBe(10);
+  });
+
+  it("carries the EKS plan including the custom-networking flag", () => {
+    const s: ShellState = {
+      ...initialState,
+      platform: "aws",
+      eksMode: "prefix-delegation",
+      eksNodes: 40,
+      eksEnisPerNode: 4,
+      eksIpsPerEni: 15,
+      eksPodsPerNode: 110,
+      eksCustomNetworking: true,
+    };
+    const restored = decodeShare(encodeShare(s));
+    expect(restored?.eksMode).toBe("prefix-delegation");
+    expect(restored?.eksNodes).toBe(40);
+    expect(restored?.eksEnisPerNode).toBe(4);
+    expect(restored?.eksIpsPerEni).toBe(15);
+    expect(restored?.eksPodsPerNode).toBe(110);
+    expect(restored?.eksCustomNetworking).toBe(true);
+  });
+
+  it("omits a null max pods, so the mode default survives the round trip", () => {
+    // null is skipped by encodeShare exactly like a default, and the decoder
+    // never invents a number, so the box comes back empty on the other end.
+    const restored = decodeShare(encodeShare({ ...initialState, aksNodes: 9 }));
+    expect(restored).not.toHaveProperty("aksMaxPods");
+    expect(restored?.aksNodes).toBe(9);
+  });
 });
 
 describe("shareUrl", () => {
@@ -87,6 +132,26 @@ describe("decodeShare hostile input", () => {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
     expect(decodeShare(`#s=${evil}`)).not.toHaveProperty("platform");
+  });
+
+  it("rejects an unknown AKS or EKS networking mode", () => {
+    const evil = btoa(JSON.stringify({ v: 1, aksMode: "calico", eksMode: "ipv6-only" }))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const restored = decodeShare(`#s=${evil}`);
+    expect(restored).not.toHaveProperty("aksMode");
+    expect(restored).not.toHaveProperty("eksMode");
+  });
+
+  it("drops a non-boolean custom-networking flag", () => {
+    const evil = btoa(JSON.stringify({ v: 1, eksCustomNetworking: "yes", eksNodes: 3 }))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const restored = decodeShare(`#s=${evil}`);
+    expect(restored).not.toHaveProperty("eksCustomNetworking");
+    expect(restored?.eksNodes).toBe(3);
   });
 
   it("drops fields with wrong types instead of failing", () => {

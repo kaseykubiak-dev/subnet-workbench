@@ -9,16 +9,38 @@
  */
 
 import { parseSubnetList } from "../engine/parse";
+import type { AksNetworkMode, AksPlan, EksIpMode, EksPlan } from "../cloud/capacity";
 import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
 
-export type Mode = "calculate" | "overlap" | "vlsm" | "vendor";
+export type Mode = "calculate" | "overlap" | "vlsm" | "capacity" | "vendor";
 
 export const MODES: { id: Mode; label: string }[] = [
   { id: "calculate", label: "Calculate" },
   { id: "overlap", label: "Overlap" },
   { id: "vlsm", label: "VLSM" },
+  { id: "capacity", label: "Capacity" },
   { id: "vendor", label: "Vendor Syntax" },
+];
+
+/**
+ * Selectable AKS networking modes.
+ *
+ * Lives here beside MODES rather than in the view because share.ts also needs
+ * the id list to whitelist a decoded payload, and share.ts must not import a
+ * view module.
+ */
+export const AKS_MODES: { id: AksNetworkMode; label: string }[] = [
+  { id: "azure-cni-node-subnet", label: "Azure CNI · node subnet" },
+  { id: "azure-cni-overlay", label: "Azure CNI · overlay" },
+  { id: "azure-cni-pod-subnet", label: "Azure CNI · pod subnet" },
+  { id: "kubenet", label: "kubenet" },
+];
+
+/** Selectable AWS VPC CNI address modes. */
+export const EKS_MODES: { id: EksIpMode; label: string }[] = [
+  { id: "secondary-ip", label: "Secondary IP" },
+  { id: "prefix-delegation", label: "Prefix delegation" },
 ];
 
 export interface ShellState {
@@ -51,6 +73,25 @@ export interface ShellState {
   vlsmRequirementsInput: string;
   /** VLSM: growth headroom percent. */
   vlsmHeadroom: number;
+  /**
+   * Capacity: the AKS/EKS plan inputs.
+   *
+   * Which set is live is decided by `platform` rather than by a mode-local
+   * toggle, so the workload always matches the constraints already on screen.
+   * Both sets persist regardless, because switching Azure to AWS to compare
+   * and back should not cost you the numbers you typed.
+   */
+  aksMode: AksNetworkMode;
+  aksNodes: number;
+  /** Max pods per node; null means "use whatever this mode defaults to". */
+  aksMaxPods: number | null;
+  aksMaxSurge: number;
+  eksMode: EksIpMode;
+  eksNodes: number;
+  eksEnisPerNode: number;
+  eksIpsPerEni: number;
+  eksPodsPerNode: number;
+  eksCustomNetworking: boolean;
   /** Vendor: one subnet per line. */
   vendorInput: string;
   vendorId: VendorId;
@@ -68,6 +109,20 @@ export const initialState: ShellState = {
   vlsmSupernetInput: "",
   vlsmRequirementsInput: "",
   vlsmHeadroom: 0,
+  // Microsoft's own worked example (50 nodes, node subnet, surge 1 -> /21).
+  // Capacity has no meaningful empty state — every field is a number with a
+  // real default — so arriving on a documented example beats arriving on zero.
+  aksMode: "azure-cni-node-subnet",
+  aksNodes: 50,
+  aksMaxPods: null,
+  aksMaxSurge: 1,
+  // A c5.large: 3 ENIs at 10 addresses each, which is AWS's worked example.
+  eksMode: "secondary-ip",
+  eksNodes: 20,
+  eksEnisPerNode: 3,
+  eksIpsPerEni: 10,
+  eksPodsPerNode: 17,
+  eksCustomNetworking: false,
   vendorInput: "",
   vendorId: "fortios",
 };
@@ -207,6 +262,46 @@ export function heldSubnetCount(state: ShellState): number {
     }
   }
   return held.size;
+}
+
+/**
+ * Coerce a typed number into the integer the estimators demand.
+ *
+ * `estimateAks` and `estimateEks` throw RangeError on a fractional or
+ * out-of-bounds input by design — they refuse to invent an answer. A text box
+ * can hold "" or "3.5" mid-keystroke, so clamping happens here, once, rather
+ * than being caught downstream in the view.
+ */
+function clampInt(value: number, min: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.floor(value));
+}
+
+/** The AKS plan implied by the current state, every field clamped legal. */
+export function aksPlanFor(state: ShellState): AksPlan {
+  const plan: AksPlan = {
+    mode: state.aksMode,
+    nodes: clampInt(state.aksNodes, 0),
+    maxSurge: clampInt(state.aksMaxSurge, 0),
+  };
+  if (state.aksMaxPods !== null) {
+    plan.maxPodsPerNode = clampInt(state.aksMaxPods, 0);
+  }
+  return plan;
+}
+
+/** The EKS plan implied by the current state, every field clamped legal. */
+export function eksPlanFor(state: ShellState): EksPlan {
+  return {
+    mode: state.eksMode,
+    nodes: clampInt(state.eksNodes, 0),
+    // An instance always has at least one ENI, and an ENI always has at least
+    // its own primary address plus one it could hand out.
+    enisPerNode: clampInt(state.eksEnisPerNode, 1),
+    ipsPerEni: clampInt(state.eksIpsPerEni, 2),
+    podsPerNode: clampInt(state.eksPodsPerNode, 0),
+    customNetworking: state.eksCustomNetworking,
+  };
 }
 
 /** Clamp the slider target into [prefix, 32]; default prefix+2, capped. */

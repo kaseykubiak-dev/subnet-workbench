@@ -30,6 +30,11 @@ import { renderSpaceMap } from "../visuals/spaceMap";
 import { VLSM_LEDGER_CSS, renderVlsmLedger } from "../visuals/vlsmLedger";
 import { COLOR, esc } from "../visuals/svg";
 import {
+  CAPACITY_CSS,
+  renderCapacityInputs,
+  renderCapacityOutput,
+} from "./capacityView";
+import {
   CLOUD_CSS,
   renderCloudBlock,
   renderCloudFacts,
@@ -219,6 +224,8 @@ function modeInputPanel(state: ShellState): string {
         `<input class="swb-input swb-num" data-field="vlsmHeadroom" type="number" min="0" max="400" value="${state.vlsmHeadroom}">` +
         `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
       );
+    case "capacity":
+      return renderCapacityInputs(state);
     case "vendor": {
       const options = VENDORS.map(
         (v) =>
@@ -387,6 +394,8 @@ export function renderOutput(state: ShellState): string {
       return renderOverlapOutput(state);
     case "vlsm":
       return renderVlsmOutput(state);
+    case "capacity":
+      return renderCapacityOutput(state);
     case "vendor":
       return renderVendorOutput(state);
   }
@@ -533,4 +542,5 @@ svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main 
 }
 ${VLSM_LEDGER_CSS}
 ${CLOUD_CSS}
+${CAPACITY_CSS}
 `.trim();

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   addToOverlap,
+  aksPlanFor,
   calculateEntries,
   commitCalculateDraft,
   effectiveSplitTarget,
+  eksPlanFor,
   heldSubnetCount,
   initialState,
   isCloudMode,
@@ -245,5 +247,87 @@ describe("clearCurrentMode", () => {
     expect(s.vlsmSupernetInput).toBe("");
     expect(s.vlsmRequirementsInput).toBe("");
     expect(s.vlsmHeadroom).toBe(0);
+  });
+
+  it("returns capacity to the worked examples rather than to zero", () => {
+    const s = clearCurrentMode({
+      ...populated,
+      mode: "capacity",
+      aksMode: "kubenet",
+      aksNodes: 999,
+      aksMaxPods: 7,
+      eksNodes: 4,
+      eksCustomNetworking: true,
+    });
+    expect(s.aksMode).toBe(initialState.aksMode);
+    expect(s.aksNodes).toBe(initialState.aksNodes);
+    expect(s.aksMaxPods).toBeNull();
+    expect(s.eksNodes).toBe(initialState.eksNodes);
+    expect(s.eksCustomNetworking).toBe(false);
+    // Still mode-local: the other modes' text is untouched.
+    expect(s.overlapInput).toBe("10.0.0.0/24");
+  });
+});
+
+describe("aksPlanFor", () => {
+  it("carries the state through when every field is already legal", () => {
+    const plan = aksPlanFor({ ...initialState, aksNodes: 50, aksMaxSurge: 1 });
+    expect(plan).toEqual({ mode: "azure-cni-node-subnet", nodes: 50, maxSurge: 1 });
+  });
+
+  it("omits maxPodsPerNode when null, so the mode's own default applies", () => {
+    const plan = aksPlanFor({ ...initialState, aksMaxPods: null });
+    expect(plan.maxPodsPerNode).toBeUndefined();
+    expect("maxPodsPerNode" in plan).toBe(false);
+  });
+
+  it("passes an explicit max pods through", () => {
+    expect(aksPlanFor({ ...initialState, aksMaxPods: 110 }).maxPodsPerNode).toBe(110);
+  });
+
+  it("floors a half-typed fraction rather than letting the estimator throw", () => {
+    const plan = aksPlanFor({ ...initialState, aksNodes: 12.9, aksMaxSurge: 2.5 });
+    expect(plan.nodes).toBe(12);
+    expect(plan.maxSurge).toBe(2);
+  });
+
+  it("clamps a negative or NaN box to the floor", () => {
+    // Number("") is 0 and Number("-") is NaN; both reach state unclamped.
+    const plan = aksPlanFor({ ...initialState, aksNodes: -5, aksMaxSurge: Number.NaN });
+    expect(plan.nodes).toBe(0);
+    expect(plan.maxSurge).toBe(0);
+  });
+});
+
+describe("eksPlanFor", () => {
+  it("carries the state through when every field is already legal", () => {
+    expect(eksPlanFor(initialState)).toEqual({
+      mode: "secondary-ip",
+      nodes: 20,
+      enisPerNode: 3,
+      ipsPerEni: 10,
+      podsPerNode: 17,
+      customNetworking: false,
+    });
+  });
+
+  it("holds ENIs at one and IPs per ENI at two, the physical minimums", () => {
+    // An instance always has one ENI, and an ENI always has its own primary
+    // address plus at least one it could hand out; estimateEks throws below that.
+    const plan = eksPlanFor({ ...initialState, eksEnisPerNode: 0, eksIpsPerEni: 1 });
+    expect(plan.enisPerNode).toBe(1);
+    expect(plan.ipsPerEni).toBe(2);
+  });
+
+  it("floors fractions and clamps NaN", () => {
+    const plan = eksPlanFor({
+      ...initialState,
+      eksNodes: 6.7,
+      eksPodsPerNode: Number.NaN,
+      eksIpsPerEni: 15.2,
+    });
+    expect(plan.nodes).toBe(6);
+    expect(plan.podsPerNode).toBe(0);
+    expect(plan.ipsPerEni).toBe(15);
   });
 });

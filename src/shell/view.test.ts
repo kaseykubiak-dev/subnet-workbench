@@ -10,7 +10,7 @@ import {
   renderTabBar,
   renderTabs,
 } from "./view";
-import { initialState } from "./state";
+import { MODES, initialState } from "./state";
 import type { ShellState } from "./state";
 import { ipToNumber } from "../engine/ipv4";
 
@@ -52,12 +52,21 @@ describe("handoffLine", () => {
 });
 
 describe("renderTabs", () => {
-  it("renders all four modes with exactly one active", () => {
+  it("renders a tab per registered mode with exactly one active", () => {
     const html = renderTabs(withState({ mode: "vlsm" }));
-    expect(html.match(/data-action="set-mode"/g)).toHaveLength(4);
+    // Counted off MODES so adding a mode does not need this test edited.
+    expect(html.match(/data-action="set-mode"/g)).toHaveLength(MODES.length);
     expect(html.match(/swb-active/g)).toHaveLength(1);
     expect(html).toContain('data-mode="vlsm"');
     expect(html).toContain("Vendor Syntax");
+  });
+
+  it("gives every registered mode a tab", () => {
+    const html = renderTabs(initialState);
+    for (const mode of MODES) {
+      expect(html).toContain(`data-mode="${mode.id}"`);
+      expect(html).toContain(mode.label);
+    }
   });
 });
 
