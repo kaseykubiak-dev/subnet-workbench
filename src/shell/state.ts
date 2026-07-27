@@ -86,6 +86,29 @@ export interface ShellState {
   calculateDraft: string;
   /** Calculate: lines that failed the last commit (newline-joined messages). */
   calculateDraftError: string;
+  /**
+   * Calculate: index of the entry being edited in place; null = none.
+   *
+   * Editing is a separate concept from selection because the two answer
+   * different questions: selection says which subnet the results panel is
+   * about, editing says which row has been temporarily replaced by a text box.
+   * Only one row can be in edit at a time, which is why this is an index and
+   * not a set.
+   */
+  calculateEditing: number | null;
+  /** Calculate: the inline editor's uncommitted text. */
+  calculateEditDraft: string;
+  /** Calculate: why the inline edit will not commit; "" = it will. */
+  calculateEditError: string;
+  /**
+   * Calculate: indices ticked for a bulk action, ascending, no duplicates.
+   *
+   * An array rather than a Set so the state object stays plain JSON, which is
+   * what the share-link encoder assumes of everything it walks. Ticking is
+   * deliberately independent of selection: you routinely want to bulk-send
+   * three rows while still reading the results for a fourth.
+   */
+  calculateChecked: number[];
   /** Calculate: prefix-slider target; null = derived default (prefix+2). */
   splitTarget: number | null;
   /** Overlap: committed entries, one subnet line each. */
@@ -113,6 +136,14 @@ export interface ShellState {
    * instead of trading one for the other.
    */
   overlapEditText: boolean;
+  /** Overlap: index of the entry being edited in place; null = none. */
+  overlapEditing: number | null;
+  /** Overlap: the inline editor's uncommitted text. */
+  overlapEditDraft: string;
+  /** Overlap: why the inline edit will not commit; "" = it will. */
+  overlapEditError: string;
+  /** Overlap: indices ticked for a bulk action, ascending, no duplicates. */
+  overlapChecked: number[];
   /** VLSM: the supernet line. */
   vlsmSupernetInput: string;
   /** VLSM: one requirement per line. */
@@ -186,12 +217,20 @@ export const initialState: ShellState = {
   calculateSelected: 0,
   calculateDraft: "",
   calculateDraftError: "",
+  calculateEditing: null,
+  calculateEditDraft: "",
+  calculateEditError: "",
+  calculateChecked: [],
   splitTarget: null,
   overlapInput: "",
   overlapSelected: null,
   overlapDraft: "",
   overlapDraftError: "",
   overlapEditText: false,
+  overlapEditing: null,
+  overlapEditDraft: "",
+  overlapEditError: "",
+  overlapChecked: [],
   vlsmSupernetInput: "",
   vlsmRequirementsInput: "",
   vlsmHeadroom: 0,
@@ -489,18 +528,68 @@ export function selectCalculateEntry(state: ShellState, index: number): ShellSta
   return { ...state, calculateSelected: clampSelection(index, count) };
 }
 
-/** Remove a Calculate entry; selection follows sensibly. */
-export function removeCalculateEntry(state: ShellState, index: number): ShellState {
+/** The removable indices in `raw`, deduped, in-range, ascending. */
+function doomedIndices(raw: number[], count: number): number[] {
+  return [...new Set(raw)]
+    .filter((i) => Number.isInteger(i) && i >= 0 && i < count)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Where an index lands once `doomed` is cut, or null if it was cut itself.
+ *
+ * Every index the shell holds onto — the focus filter, the ticked set — is a
+ * position in a list that removal renumbers underneath it. Doing that
+ * arithmetic in one place is what keeps a bulk delete from silently reassigning
+ * a tick to whichever row slid into the gap.
+ */
+function shiftIndex(index: number, doomed: number[]): number | null {
+  if (doomed.includes(index)) return null;
+  return index - doomed.filter((i) => i < index).length;
+}
+
+/** Renumber a ticked set across a removal, dropping the rows that went. */
+function shiftChecked(checked: number[], doomed: number[]): number[] {
+  const next: number[] = [];
+  for (const index of checked) {
+    const moved = shiftIndex(index, doomed);
+    if (moved !== null) next.push(moved);
+  }
+  return next;
+}
+
+/**
+ * Remove one or more Calculate entries in a single step.
+ *
+ * Plural for the same reason `removeOverlapEntries` is: the bulk bar deletes a
+ * ticked set, and removing those one at a time would shift each remaining index
+ * out from under the next removal. Indices resolve against the list as it
+ * stands before anything is cut.
+ */
+export function removeCalculateEntries(state: ShellState, indices: number[]): ShellState {
   const entries = calculateEntries(state);
-  if (index < 0 || index >= entries.length) return state;
-  entries.splice(index, 1);
+  const doomed = doomedIndices(indices, entries.length);
+  if (doomed.length === 0) return state;
+  const kept = entries.filter((_, i) => !doomed.includes(i));
   let selected = state.calculateSelected;
-  if (index < selected) selected -= 1;
+  selected -= doomed.filter((i) => i < selected).length;
   return {
     ...state,
-    calculateInput: entries.join("\n"),
-    calculateSelected: clampSelection(selected, entries.length),
+    calculateInput: kept.join("\n"),
+    calculateSelected: clampSelection(selected, kept.length),
+    calculateChecked: shiftChecked(state.calculateChecked, doomed),
+    // An in-flight edit is abandoned rather than renumbered. The draft belongs
+    // to a row, and a row that just moved is not obviously the same row to the
+    // person who was typing into it.
+    calculateEditing: null,
+    calculateEditDraft: "",
+    calculateEditError: "",
   };
+}
+
+/** Remove a single Calculate entry; selection and ticks follow sensibly. */
+export function removeCalculateEntry(state: ShellState, index: number): ShellState {
+  return removeCalculateEntries(state, [index]);
 }
 
 /**
@@ -527,42 +616,244 @@ export function clearOverlapFilter(state: ShellState): ShellState {
  */
 export function removeOverlapEntries(state: ShellState, indices: number[]): ShellState {
   const entries = overlapEntries(state);
-  const doomed = [...new Set(indices)].filter(
-    (i) => Number.isInteger(i) && i >= 0 && i < entries.length
-  );
+  const doomed = doomedIndices(indices, entries.length);
   if (doomed.length === 0) return state;
   const kept = entries.filter((_, i) => !doomed.includes(i));
-  let selected = state.overlapSelected;
-  if (selected !== null) {
-    const focused = selected;
-    selected = doomed.includes(focused)
-      ? null
-      : focused - doomed.filter((i) => i < focused).length;
+  const selected =
+    state.overlapSelected === null ? null : shiftIndex(state.overlapSelected, doomed);
+  return {
+    ...state,
+    overlapInput: kept.join("\n"),
+    overlapSelected: selected,
+    overlapChecked: shiftChecked(state.overlapChecked, doomed),
+    overlapEditing: null,
+    overlapEditDraft: "",
+    overlapEditError: "",
+  };
+}
+
+interface EntryEdit {
+  /** The entry list with the edited line replaced; unchanged when `error`. */
+  entries: string[];
+  /** Why the edit will not commit; "" when it will. */
+  error: string;
+}
+
+/**
+ * Replace one line of an entry list, or explain why not.
+ *
+ * Shared by both rosters so the rules cannot drift. Three of them are worth
+ * stating out loud:
+ *
+ * - An empty field is an error, not a deletion. Clearing a field by accident
+ *   and pressing Enter is common; having that silently delete the row is the
+ *   kind of data loss an undo-less tool cannot afford.
+ * - One entry holds one subnet. Pasting a block into a single row would
+ *   renumber everything below it, which is what the add box is for.
+ * - Duplicates ARE allowed here, unlike the draft box which dedupes. In Overlap
+ *   an identical pair is precisely the conflict the tool exists to report, so
+ *   editing a row into a collision has to be possible.
+ */
+function editEntryLines(entries: string[], index: number, draft: string): EntryEdit {
+  if (index < 0 || index >= entries.length) return { entries, error: "" };
+  const trimmed = draft.trim();
+  if (trimmed === "") {
+    return { entries, error: "An entry cannot be empty. Use the × to remove it." };
   }
-  return { ...state, overlapInput: kept.join("\n"), overlapSelected: selected };
+  const { subnets, errors } = parseSubnetList(trimmed);
+  if (subnets.length + errors.length > 1) {
+    return { entries, error: "One subnet per entry. Use the add box for more." };
+  }
+  const subnet = subnets[0];
+  if (subnet === undefined) {
+    const failure = errors[0];
+    return {
+      entries,
+      error:
+        failure === undefined
+          ? `${trimmed} —> not a subnet`
+          : `${failure.raw} —> ${failure.message}`,
+    };
+  }
+  const next = [...entries];
+  next[index] = subnet.raw.trim();
+  return { entries: next, error: "" };
+}
+
+/**
+ * Open the inline editor on a Calculate row.
+ *
+ * Selection moves with it, because in Calculate the selected row is the one the
+ * results panel describes and editing a row you cannot see the output for makes
+ * no sense.
+ */
+export function beginEditCalculateEntry(state: ShellState, index: number): ShellState {
+  const entries = calculateEntries(state);
+  const line = entries[index];
+  if (line === undefined) return state;
+  return {
+    ...state,
+    calculateSelected: index,
+    calculateEditing: index,
+    calculateEditDraft: line,
+    calculateEditError: "",
+  };
+}
+
+/** Type into the Calculate inline editor. Errors clear as soon as you do. */
+export function updateCalculateEditDraft(state: ShellState, draft: string): ShellState {
+  if (state.calculateEditing === null) return state;
+  return { ...state, calculateEditDraft: draft, calculateEditError: "" };
+}
+
+/** Commit the Calculate inline edit, or hold the row open with the reason. */
+export function commitCalculateEditEntry(state: ShellState): ShellState {
+  const index = state.calculateEditing;
+  if (index === null) return state;
+  const edit = editEntryLines(calculateEntries(state), index, state.calculateEditDraft);
+  if (edit.error !== "") return { ...state, calculateEditError: edit.error };
+  return {
+    ...state,
+    calculateInput: edit.entries.join("\n"),
+    calculateEditing: null,
+    calculateEditDraft: "",
+    calculateEditError: "",
+  };
+}
+
+/** Abandon the Calculate inline edit; the row comes back untouched. */
+export function cancelCalculateEditEntry(state: ShellState): ShellState {
+  if (state.calculateEditing === null) return state;
+  return { ...state, calculateEditing: null, calculateEditDraft: "", calculateEditError: "" };
+}
+
+/**
+ * Open the inline editor on an Overlap row.
+ *
+ * The focus filter is left alone, unlike Calculate's selection. Overlap's
+ * selection narrows the report rather than naming a subject, and quietly
+ * narrowing it because someone fixed a typo would hide the other conflicts they
+ * were in the middle of reading.
+ */
+export function beginEditOverlapEntry(state: ShellState, index: number): ShellState {
+  const line = overlapEntries(state)[index];
+  if (line === undefined) return state;
+  return { ...state, overlapEditing: index, overlapEditDraft: line, overlapEditError: "" };
+}
+
+/** Type into the Overlap inline editor. Errors clear as soon as you do. */
+export function updateOverlapEditDraft(state: ShellState, draft: string): ShellState {
+  if (state.overlapEditing === null) return state;
+  return { ...state, overlapEditDraft: draft, overlapEditError: "" };
+}
+
+/** Commit the Overlap inline edit, or hold the row open with the reason. */
+export function commitOverlapEditEntry(state: ShellState): ShellState {
+  const index = state.overlapEditing;
+  if (index === null) return state;
+  const edit = editEntryLines(overlapEntries(state), index, state.overlapEditDraft);
+  if (edit.error !== "") return { ...state, overlapEditError: edit.error };
+  return {
+    ...state,
+    overlapInput: edit.entries.join("\n"),
+    overlapEditing: null,
+    overlapEditDraft: "",
+    overlapEditError: "",
+  };
+}
+
+/** Abandon the Overlap inline edit; the row comes back untouched. */
+export function cancelOverlapEditEntry(state: ShellState): ShellState {
+  if (state.overlapEditing === null) return state;
+  return { ...state, overlapEditing: null, overlapEditDraft: "", overlapEditError: "" };
+}
+
+/** A ticked set reduced to what the list can actually hold, ascending. */
+function normalizeChecked(indices: number[], count: number): number[] {
+  return doomedIndices(indices, count);
+}
+
+/** Tick or untick one row. */
+function toggleChecked(checked: number[], index: number, count: number): number[] {
+  if (!Number.isInteger(index) || index < 0 || index >= count) return checked;
+  return checked.includes(index)
+    ? checked.filter((i) => i !== index)
+    : normalizeChecked([...checked, index], count);
+}
+
+/** Tick or untick a Calculate row. Independent of which row is selected. */
+export function toggleCalculateChecked(state: ShellState, index: number): ShellState {
+  const count = calculateEntries(state).length;
+  return { ...state, calculateChecked: toggleChecked(state.calculateChecked, index, count) };
+}
+
+/** Set the Calculate ticked set outright; this is what All / None calls. */
+export function setCalculateChecked(state: ShellState, indices: number[]): ShellState {
+  const count = calculateEntries(state).length;
+  return { ...state, calculateChecked: normalizeChecked(indices, count) };
+}
+
+/** Tick or untick an Overlap row. Independent of the focus filter. */
+export function toggleOverlapChecked(state: ShellState, index: number): ShellState {
+  const count = overlapEntries(state).length;
+  return { ...state, overlapChecked: toggleChecked(state.overlapChecked, index, count) };
+}
+
+/** Set the Overlap ticked set outright; this is what All / None calls. */
+export function setOverlapChecked(state: ShellState, indices: number[]): ShellState {
+  const count = overlapEntries(state).length;
+  return { ...state, overlapChecked: normalizeChecked(indices, count) };
+}
+
+/**
+ * The Calculate lines currently ticked, in list order.
+ *
+ * List order rather than click order, because the bulk actions append to
+ * another mode's list and arriving in the order you happened to tick them in
+ * would scramble a roster someone had deliberately arranged.
+ */
+export function checkedCalculateEntries(state: ShellState): string[] {
+  const entries = calculateEntries(state);
+  return normalizeChecked(state.calculateChecked, entries.length).map(
+    (i) => entries[i] as string
+  );
+}
+
+/** The Overlap lines currently ticked, in list order. */
+export function checkedOverlapEntries(state: ShellState): string[] {
+  const entries = overlapEntries(state);
+  return normalizeChecked(state.overlapChecked, entries.length).map((i) => entries[i] as string);
 }
 
 /**
  * Swap the Overlap roster for the raw textarea, or back.
  *
- * Both directions clear the focus filter, because it is an entry index and
- * free-text editing can move or delete the line underneath it. Leaving text
- * mode also normalizes the field, which is what keeps entry index and parse
- * line number aligned for the roster on the way back in.
+ * Both directions clear the focus filter, the ticked set and any in-flight
+ * inline edit, because all three are entry indices and free-text editing can
+ * move or delete the line underneath them. Leaving text mode also normalizes
+ * the field, which is what keeps entry index and parse line number aligned for
+ * the roster on the way back in.
  */
 export function toggleOverlapEditText(state: ShellState): ShellState {
+  const cleared = {
+    overlapSelected: null,
+    overlapChecked: [] as number[],
+    overlapEditing: null,
+    overlapEditDraft: "",
+    overlapEditError: "",
+  };
   if (state.overlapEditText) {
     return {
       ...state,
+      ...cleared,
       overlapEditText: false,
       overlapInput: overlapEntries(state).join("\n"),
-      overlapSelected: null,
     };
   }
   return {
     ...state,
+    ...cleared,
     overlapEditText: true,
-    overlapSelected: null,
     overlapDraft: "",
     overlapDraftError: "",
   };

@@ -47,6 +47,15 @@ import {
 } from "../modes/overlap";
 import { COLOR, esc } from "../visuals/svg";
 import { renderSpaceMap } from "../visuals/spaceMap";
+import {
+  renderCheckAll,
+  renderRoster,
+  renderRosterHead,
+  type BulkAction,
+  type RosterActions,
+  type RosterRow,
+  type RosterSpec,
+} from "./rosterView";
 import type { ShellState } from "./state";
 import { overlapEntries, overlapSource } from "./state";
 
@@ -114,8 +123,33 @@ function errorsBlock(errors: ParseError[]): string {
 // Input panel (left column)
 // ---------------------------------------------------------------------------
 
-/** The count-and-verdict line above the roster, plus the text-mode toggle. */
-function rosterHead(model: OverlapModel): string {
+/** Overlap's half of the roster contract; Calculate keeps its own set. */
+const OVERLAP_ROSTER: RosterActions = {
+  select: "select-overlap-entry",
+  check: "toggle-overlap-check",
+  checkAll: "set-overlap-checks",
+  beginEdit: "edit-overlap-entry",
+  commitEdit: "commit-overlap-edit",
+  cancelEdit: "cancel-overlap-edit",
+  remove: "remove-overlap-entry",
+};
+
+/**
+ * The bulk bar Overlap offers.
+ *
+ * No "Add to Overlap": you are already here. Removing a ticked set is the one
+ * that earns its place, because the repair for a report full of collisions is
+ * usually cutting several rows at once rather than the two "Remove both"
+ * handles for you.
+ */
+const OVERLAP_BULK: BulkAction[] = [
+  { action: "bulk-overlap-vendor", label: "Vendor syntax" },
+  { action: "bulk-overlap-vlsm", label: "VLSM supernet", singleOnly: true },
+  { action: "bulk-overlap-remove", label: "Remove", danger: true },
+];
+
+/** The count-and-verdict line above the roster, plus the head's controls. */
+function overlapHead(model: OverlapModel): string {
   const { entries, result } = model;
   let tally = "";
   if (entries.length >= 2 && result.status === "conflicts") {
@@ -125,47 +159,52 @@ function rosterHead(model: OverlapModel): string {
   } else if (entries.length >= 2 && result.status === "all-clear") {
     tally = `<span class="swb-tally swb-tally-ok">clear</span>`;
   }
-  return (
-    `<div class="swb-roster-head">` +
-    `<span class="swb-field-label swb-inline">Subnets &middot; ${entries.length}</span>` +
-    tally +
-    `<button class="swb-textlink" data-action="toggle-overlap-text">Edit as text</button>` +
-    `</div>`
-  );
+  return renderRosterHead(`Subnets &middot; ${entries.length}`, tally, [
+    renderCheckAll(OVERLAP_ROSTER.checkAll, entries.length),
+    `<button class="swb-textlink" data-action="toggle-overlap-text">Edit as text</button>`,
+  ]);
 }
 
-function rosterRow(model: OverlapModel, index: number): string {
-  const line = model.entries[index] ?? "";
-  const idx = String(index + 1).padStart(2, "0");
-  const sel = index === model.focused ? " swb-sel" : "";
-  const remove =
-    `<button class="swb-entry-x" data-action="remove-overlap-entry" ` +
-    `data-indices="${index}" aria-label="Remove entry">&times;</button>`;
-  const subnet = model.byLine.get(index + 1);
-  if (subnet === undefined) {
-    return (
-      `<div class="swb-entry swb-entry-bad${sel}">` +
-      `<span class="swb-entry-idx">${idx}</span>` +
-      `<span class="swb-entry-lbl">${esc(line)}</span>` +
-      remove +
-      `</div>`
-    );
-  }
-  const severity = severityForLine(model.result, index + 1);
-  const edge = severity === null ? "" : ` swb-ov-${severity}`;
-  const chip =
-    severity === null
-      ? ""
-      : `<span class="swb-sev swb-sev-${severity}">${SEVERITY_LABEL[severity]}</span>`;
-  return (
-    `<div class="swb-entry${edge}${sel}" data-action="select-overlap-entry" data-index="${index}">` +
-    `<span class="swb-entry-idx">${idx}</span>` +
-    `<span class="swb-entry-lbl">${esc(subnet.label ?? "")}</span>` +
-    `<span class="swb-entry-cidr">${esc(cidrOf(subnet))}</span>` +
-    chip +
-    remove +
-    `</div>`
-  );
+function overlapRoster(state: ShellState, model: OverlapModel): RosterSpec {
+  const rows: RosterRow[] = model.entries.map((line, index) => {
+    const subnet = model.byLine.get(index + 1);
+    if (subnet === undefined) {
+      return {
+        raw: line,
+        label: "",
+        cidr: undefined,
+        className: "swb-entry-bad",
+        trailing: "",
+        // A line the parser rejected is in no conflicts, and letting someone
+        // focus it would answer "does this overlap anything" with a confident
+        // no. The pencil is still there, which is the actual fix.
+        selectable: false,
+      };
+    }
+    const severity = severityForLine(model.result, index + 1);
+    return {
+      raw: line,
+      label: subnet.label ?? "",
+      cidr: cidrOf(subnet),
+      className: severity === null ? "" : `swb-ov-${severity}`,
+      trailing:
+        severity === null
+          ? ""
+          : `<span class="swb-sev swb-sev-${severity}">${SEVERITY_LABEL[severity]}</span>`,
+      selectable: true,
+    };
+  });
+  return {
+    rows,
+    selected: model.focused,
+    editing: state.overlapEditing,
+    editDraft: state.overlapEditDraft,
+    editError: state.overlapEditError,
+    checked: state.overlapChecked,
+    editField: "overlapEditDraft",
+    actions: OVERLAP_ROSTER,
+    bulk: OVERLAP_BULK,
+  };
 }
 
 function draftErrors(text: string): string {
@@ -198,14 +237,10 @@ export function renderOverlapInputs(state: ShellState): string {
   const model = overlapModel(state);
   const roster =
     model.entries.length > 0
-      ? rosterHead(model) +
-        `<div class="swb-entries">` +
-        model.entries.map((_, i) => rosterRow(model, i)).join("") +
-        `</div>`
-      : `<div class="swb-roster-head">` +
-        `<span class="swb-field-label swb-inline">Subnets &middot; 0</span>` +
-        `<button class="swb-textlink" data-action="toggle-overlap-text">Edit as text</button>` +
-        `</div>`;
+      ? overlapHead(model) + renderRoster(overlapRoster(state, model))
+      : renderRosterHead(`Subnets &middot; 0`, "", [
+          `<button class="swb-textlink" data-action="toggle-overlap-text">Edit as text</button>`,
+        ]);
   return (
     roster +
     `<div class="swb-field-label">Add subnet</div>` +
@@ -323,14 +358,10 @@ export function renderOverlapOutput(state: ShellState): string {
 }
 
 export const OVERLAP_CSS = `
-.swb-roster-head { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
-.swb-roster-head .swb-field-label { margin: 0; }
 .swb-tally { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.54rem; letter-spacing: 0.14em; text-transform: uppercase; padding: 2px 6px; }
 .swb-tally-err { color: var(--tool-danger, #d64550); background: var(--tool-danger-bg, rgba(214,69,80,0.08)); border: 1px solid rgba(214,69,80,0.35); }
 .swb-tally-warn { color: var(--color-orange-deep, #e07200); background: var(--tool-warn-bg, rgba(224,114,0,0.08)); border: 1px solid rgba(224,114,0,0.35); }
 .swb-tally-ok { color: var(--color-smokey-light, #6e6e6e); background: var(--color-panel, #f1efec); border: 1px solid var(--color-line, #e4e1dc); }
-.swb-textlink { margin-left: auto; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 0.56rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-smokey-light, #6e6e6e); background: none; border: none; border-bottom: 1px solid rgba(75,75,75,0.3); padding: 0 0 1px; cursor: pointer; }
-.swb-textlink:hover { color: var(--color-orange-deep, #e07200); border-bottom-color: var(--color-orange, #ff8200); }
 /* Severity edge as an inset shadow, not a border: a border would shift the
    row's content 2px and break alignment with the clean rows above it. */
 .swb-ov-error { box-shadow: inset 2px 0 0 var(--tool-danger, #d64550); }

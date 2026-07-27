@@ -3,10 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   addToOverlap,
   aksPlanFor,
+  beginEditCalculateEntry,
+  beginEditOverlapEntry,
   calculateEntries,
+  cancelCalculateEditEntry,
+  cancelOverlapEditEntry,
+  checkedCalculateEntries,
+  checkedOverlapEntries,
   clearOverlapFilter,
   commitCalculateDraft,
+  commitCalculateEditEntry,
   commitOverlapDraft,
+  commitOverlapEditEntry,
   effectiveSplitTarget,
   eksPlanFor,
   heldSubnetCount,
@@ -14,15 +22,22 @@ import {
   isCloudMode,
   overlapEntries,
   overlapSource,
+  removeCalculateEntries,
   removeCalculateEntry,
   removeOverlapEntries,
   selectCalculateEntry,
   selectOverlapEntry,
   selectedCalculateSubnet,
   sendToVendor,
+  setCalculateChecked,
   setMode,
+  setOverlapChecked,
   setPlatform,
+  toggleCalculateChecked,
+  toggleOverlapChecked,
   toggleOverlapEditText,
+  updateCalculateEditDraft,
+  updateOverlapEditDraft,
   useAsVlsmSupernet,
 } from "./state";
 import { clearCurrentMode } from "./app";
@@ -264,6 +279,195 @@ describe("toggleOverlapEditText / overlapSource", () => {
     const after = toggleOverlapEditText(toggleOverlapEditText(before));
     expect(after.overlapInput).toBe(before.overlapInput);
     expect(after.overlapEditText).toBe(false);
+  });
+});
+
+const FOUR = ["A: 10.0.0.0/24", "B: 10.0.1.0/24", "C: 10.0.2.0/24", "D: 10.0.3.0/24"].join("\n");
+
+describe("inline entry editing", () => {
+  const calc = { ...initialState, calculateInput: FOUR };
+  const over = { ...initialState, overlapInput: FOUR };
+
+  it("opens on the row's current text", () => {
+    const s = beginEditCalculateEntry(calc, 2);
+    expect(s.calculateEditing).toBe(2);
+    expect(s.calculateEditDraft).toBe("C: 10.0.2.0/24");
+    expect(s.calculateEditError).toBe("");
+  });
+
+  it("refuses to open on a row that is not there", () => {
+    expect(beginEditCalculateEntry(calc, 9)).toBe(calc);
+    expect(beginEditOverlapEntry(over, -1)).toBe(over);
+  });
+
+  it("moves the Calculate selection to the row under edit", () => {
+    expect(beginEditCalculateEntry({ ...calc, calculateSelected: 0 }, 3).calculateSelected).toBe(3);
+  });
+
+  it("leaves the Overlap filter alone, because it narrows rather than names", () => {
+    const s = beginEditOverlapEntry({ ...over, overlapSelected: 1 }, 3);
+    expect(s.overlapSelected).toBe(1);
+    expect(s.overlapEditing).toBe(3);
+  });
+
+  it("writes the edited line back in place and closes", () => {
+    let s = beginEditCalculateEntry(calc, 1);
+    s = updateCalculateEditDraft(s, "  B2: 10.9.0.0/22  ");
+    s = commitCalculateEditEntry(s);
+    expect(calculateEntries(s)[1]).toBe("B2: 10.9.0.0/22");
+    expect(calculateEntries(s)).toHaveLength(4);
+    expect(s.calculateEditing).toBeNull();
+    expect(s.calculateEditDraft).toBe("");
+  });
+
+  it("holds the row open with the reason when the line no longer parses", () => {
+    let s = beginEditOverlapEntry(over, 0);
+    s = updateOverlapEditDraft(s, "banana");
+    s = commitOverlapEditEntry(s);
+    expect(s.overlapEditing).toBe(0);
+    expect(s.overlapEditError).toContain("banana");
+    expect(overlapEntries(s)[0]).toBe("A: 10.0.0.0/24");
+  });
+
+  it("treats an emptied field as an error, never as a deletion", () => {
+    let s = beginEditCalculateEntry(calc, 0);
+    s = updateCalculateEditDraft(s, "   ");
+    s = commitCalculateEditEntry(s);
+    expect(calculateEntries(s)).toHaveLength(4);
+    expect(s.calculateEditError).toContain("cannot be empty");
+  });
+
+  it("refuses a multi-line paste rather than renumbering the list", () => {
+    let s = beginEditCalculateEntry(calc, 0);
+    s = updateCalculateEditDraft(s, "X: 10.5.0.0/24\nY: 10.6.0.0/24");
+    s = commitCalculateEditEntry(s);
+    expect(calculateEntries(s)).toHaveLength(4);
+    expect(s.calculateEditError).toContain("One subnet per entry");
+  });
+
+  it("allows an edit into a duplicate, which is the conflict Overlap reports", () => {
+    let s = beginEditOverlapEntry(over, 1);
+    s = updateOverlapEditDraft(s, "B: 10.0.0.0/24");
+    s = commitOverlapEditEntry(s);
+    expect(s.overlapEditing).toBeNull();
+    expect(overlapEntries(s)[1]).toBe("B: 10.0.0.0/24");
+  });
+
+  it("clears a stale error the moment the user types again", () => {
+    let s = beginEditOverlapEntry(over, 0);
+    s = commitOverlapEditEntry(updateOverlapEditDraft(s, "nope"));
+    expect(s.overlapEditError).not.toBe("");
+    expect(updateOverlapEditDraft(s, "n").overlapEditError).toBe("");
+  });
+
+  it("backs out unchanged on cancel", () => {
+    let s = beginEditCalculateEntry(calc, 2);
+    s = cancelCalculateEditEntry(updateCalculateEditDraft(s, "wrecked"));
+    expect(s.calculateInput).toBe(FOUR);
+    expect(s.calculateEditing).toBeNull();
+    expect(s.calculateEditDraft).toBe("");
+  });
+
+  it("ignores commit, update and cancel when nothing is being edited", () => {
+    expect(commitCalculateEditEntry(calc)).toBe(calc);
+    expect(cancelOverlapEditEntry(over)).toBe(over);
+    expect(updateOverlapEditDraft(over, "x")).toBe(over);
+  });
+
+  it("abandons an in-flight edit when the list is restructured under it", () => {
+    const s = removeCalculateEntries(beginEditCalculateEntry(calc, 3), [0]);
+    expect(s.calculateEditing).toBeNull();
+    expect(s.calculateEditDraft).toBe("");
+  });
+});
+
+describe("the ticked set", () => {
+  const calc = { ...initialState, calculateInput: FOUR };
+  const over = { ...initialState, overlapInput: FOUR };
+
+  it("ticks and unticks one row at a time, kept in list order", () => {
+    let s = toggleCalculateChecked(calc, 2);
+    s = toggleCalculateChecked(s, 0);
+    expect(s.calculateChecked).toEqual([0, 2]);
+    expect(toggleCalculateChecked(s, 0).calculateChecked).toEqual([2]);
+  });
+
+  it("stays independent of which row is selected", () => {
+    const s = toggleCalculateChecked({ ...calc, calculateSelected: 3 }, 1);
+    expect(s.calculateSelected).toBe(3);
+    expect(s.calculateChecked).toEqual([1]);
+  });
+
+  it("stays independent of the Overlap focus filter", () => {
+    const s = toggleOverlapChecked({ ...over, overlapSelected: 0 }, 2);
+    expect(s.overlapSelected).toBe(0);
+    expect(s.overlapChecked).toEqual([2]);
+  });
+
+  it("ignores rows the list does not hold", () => {
+    expect(toggleCalculateChecked(calc, 9).calculateChecked).toEqual([]);
+    expect(toggleOverlapChecked(over, -1).overlapChecked).toEqual([]);
+  });
+
+  it("sets the whole set at once for All and None", () => {
+    expect(setCalculateChecked(calc, [0, 1, 2, 3]).calculateChecked).toEqual([0, 1, 2, 3]);
+    expect(setOverlapChecked(over, []).overlapChecked).toEqual([]);
+  });
+
+  it("scrubs duplicates and out-of-range indices out of a set", () => {
+    expect(setCalculateChecked(calc, [3, 1, 1, 9, -2]).calculateChecked).toEqual([1, 3]);
+  });
+
+  it("hands back the ticked lines in list order, not click order", () => {
+    const s = setOverlapChecked(over, [3, 0]);
+    expect(checkedOverlapEntries(s)).toEqual(["A: 10.0.0.0/24", "D: 10.0.3.0/24"]);
+  });
+
+  it("hands back nothing when nothing is ticked", () => {
+    expect(checkedCalculateEntries(calc)).toEqual([]);
+  });
+
+  it("renumbers the surviving ticks across a removal", () => {
+    const s = removeCalculateEntries(setCalculateChecked(calc, [1, 3]), [0]);
+    expect(s.calculateChecked).toEqual([0, 2]);
+    expect(checkedCalculateEntries(s)).toEqual(["B: 10.0.1.0/24", "D: 10.0.3.0/24"]);
+  });
+
+  it("drops ticks whose rows were the ones removed", () => {
+    const s = removeOverlapEntries(setOverlapChecked(over, [0, 2]), [0, 2]);
+    expect(s.overlapChecked).toEqual([]);
+    expect(overlapEntries(s)).toEqual(["B: 10.0.1.0/24", "D: 10.0.3.0/24"]);
+  });
+
+  it("is wiped by the edit-as-text toggle, where indices stop meaning anything", () => {
+    const s = toggleOverlapEditText(
+      beginEditOverlapEntry(setOverlapChecked(over, [0, 1]), 1)
+    );
+    expect(s.overlapChecked).toEqual([]);
+    expect(s.overlapEditing).toBeNull();
+    expect(s.overlapEditDraft).toBe("");
+  });
+});
+
+describe("removeCalculateEntries", () => {
+  const base = { ...initialState, calculateInput: FOUR };
+
+  it("removes a ticked set against the pre-cut indices", () => {
+    const s = removeCalculateEntries(base, [1, 3]);
+    expect(calculateEntries(s)).toEqual(["A: 10.0.0.0/24", "C: 10.0.2.0/24"]);
+  });
+
+  it("pulls the selection down past what was cut above it", () => {
+    expect(removeCalculateEntries({ ...base, calculateSelected: 3 }, [0, 1]).calculateSelected).toBe(1);
+  });
+
+  it("clamps a selection that fell off the end of a shortened list", () => {
+    expect(removeCalculateEntries({ ...base, calculateSelected: 3 }, [3]).calculateSelected).toBe(2);
+  });
+
+  it("ignores out-of-range and duplicate indices", () => {
+    expect(removeCalculateEntries(base, [9, -1])).toBe(base);
+    expect(calculateEntries(removeCalculateEntries(base, [2, 2]))).toHaveLength(3);
   });
 });
 

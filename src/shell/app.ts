@@ -15,32 +15,47 @@ import { renderPrefixSplit } from "../visuals/prefixSplit";
 import type { CapacityWorkload, Mode, ShellState } from "./state";
 import {
   addToOverlap,
+  beginEditCalculateEntry,
+  beginEditOverlapEntry,
+  cancelCalculateEditEntry,
+  cancelOverlapEditEntry,
+  checkedCalculateEntries,
+  checkedOverlapEntries,
   clearOverlapFilter,
   commitCalculateDraft,
+  commitCalculateEditEntry,
   commitOverlapDraft,
+  commitOverlapEditEntry,
   effectiveSplitTarget,
   initialState,
   overlapSource,
-  removeCalculateEntry,
+  removeCalculateEntries,
   removeOverlapEntries,
   selectCalculateEntry,
   selectOverlapEntry,
   selectedCalculateSubnet,
   sendToPlan,
   sendToVendor,
+  setCalculateChecked,
   setMode,
+  setOverlapChecked,
   setPlatform,
   setServiceCount,
+  toggleCalculateChecked,
+  toggleOverlapChecked,
   toggleOverlapEditText,
   toggleService,
+  updateCalculateEditDraft,
+  updateOverlapEditDraft,
   useAsVlsmSupernet,
 } from "./state";
 import { decodeShare, shareUrl } from "./share";
+import { renderEditFoot } from "./rosterView";
 import { handoffLine, renderFooter, renderOutput, renderShell } from "./view";
 import { servicesEstimateFor } from "./servicesView";
 import type { AksNetworkMode, EksIpMode } from "../cloud/capacity";
 import { servicePlanText } from "../cloud/capacity";
-import { ipToNumber } from "../engine/ipv4";
+import { ipToNumber, numberToIp } from "../engine/ipv4";
 import type { PlatformId } from "../cloud/platforms";
 import type { VendorId } from "../vendor/templates";
 
@@ -105,13 +120,27 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
     if (foot !== null) foot.innerHTML = renderFooter(state);
   };
 
-  /** After a full rerender, put focus back in an add-subnet box. */
-  const refocusDraft = (field: "calculateDraft" | "overlapDraft"): void => {
-    const box = root.querySelector<HTMLTextAreaElement>(`[data-field="${field}"]`);
-    if (box !== null) {
+  /**
+   * After a full rerender, put focus and the caret back in a text field.
+   *
+   * Covers both the add-subnet textareas and the inline entry editors, which
+   * are `<input>` rather than `<textarea>`; a full rerender replaces the
+   * element either way, so the caret has to be restored by hand.
+   */
+  const refocusField = (
+    field: "calculateDraft" | "overlapDraft" | "calculateEditDraft" | "overlapEditDraft"
+  ): void => {
+    const box = root.querySelector(`[data-field="${field}"]`);
+    if (box instanceof HTMLTextAreaElement || box instanceof HTMLInputElement) {
       box.focus();
       box.setSelectionRange(box.value.length, box.value.length);
     }
+  };
+
+  /** The bare CIDR of a roster line, label dropped; null when it will not parse. */
+  const bareCidr = (line: string): string | null => {
+    const s = parseSubnetList(line).subnets[0];
+    return s === undefined ? null : `${numberToIp(s.network)}/${s.prefix}`;
   };
 
   /** Slider drag: swap only the visuals so the slider element survives. */
@@ -227,6 +256,26 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       return;
     }
     if (
+      el instanceof HTMLInputElement &&
+      (field === "calculateEditDraft" || field === "overlapEditDraft")
+    ) {
+      // Same deal for the inline editors: no rerender, because replacing the
+      // input would take the caret with it. But typing does clear a rejected
+      // edit's error, and leaving that message sitting under the box while the
+      // user fixes it reads as though the fix has not registered. So the one
+      // line that changed is swapped in place instead.
+      const calc = field === "calculateEditDraft";
+      const had = calc ? state.calculateEditError : state.overlapEditError;
+      state = calc
+        ? updateCalculateEditDraft(state, el.value)
+        : updateOverlapEditDraft(state, el.value);
+      if (had !== "") {
+        const foot = root.querySelector(".swb-entry-foot");
+        if (foot !== null) foot.outerHTML = renderEditFoot("");
+      }
+      return;
+    }
+    if (
       el instanceof HTMLTextAreaElement &&
       (field === "overlapInput" ||
         field === "vlsmSupernetInput" ||
@@ -241,6 +290,31 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
 
   root.addEventListener("keydown", (event) => {
     const el = event.target;
+
+    // The inline entry editors are <input>, so they are matched before the
+    // textarea guard below rather than after it.
+    if (el instanceof HTMLInputElement) {
+      const field = el.dataset["field"];
+      if (field !== "calculateEditDraft" && field !== "overlapEditDraft") return;
+      const calc = field === "calculateEditDraft";
+      if (event.key === "Enter") {
+        event.preventDefault();
+        state = calc ? commitCalculateEditEntry(state) : commitOverlapEditEntry(state);
+        rerenderFull();
+        // A rejected edit keeps its row open with the reason attached, so the
+        // caret goes back into the box the user is about to fix.
+        const stillOpen = calc ? state.calculateEditing : state.overlapEditing;
+        if (stillOpen !== null) refocusField(field);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        state = calc ? cancelCalculateEditEntry(state) : cancelOverlapEditEntry(state);
+        rerenderFull();
+      }
+      return;
+    }
+
     if (!(el instanceof HTMLTextAreaElement)) return;
     if (event.key !== "Enter" || event.shiftKey) return;
     const field = el.dataset["field"];
@@ -248,14 +322,14 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       event.preventDefault();
       state = commitCalculateDraft(state);
       rerenderFull();
-      refocusDraft("calculateDraft");
+      refocusField("calculateDraft");
       return;
     }
     if (field === "overlapDraft") {
       event.preventDefault();
       state = commitOverlapDraft(state);
       rerenderFull();
-      refocusDraft("overlapDraft");
+      refocusField("overlapDraft");
     }
   });
 
@@ -290,23 +364,68 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       case "commit-draft":
         state = commitCalculateDraft(state);
         rerenderFull();
-        refocusDraft("calculateDraft");
+        refocusField("calculateDraft");
         break;
       case "select-entry":
         state = selectCalculateEntry(state, Number(el.dataset["index"]));
         rerenderFull();
         break;
+      case "toggle-entry-check":
+        state = toggleCalculateChecked(state, Number(el.dataset["index"]));
+        rerenderFull();
+        break;
+      case "set-entry-checks":
+        // "All" carries every index, "None" carries an empty attribute.
+        state = setCalculateChecked(state, parseIndexList(el.dataset["indices"]));
+        rerenderFull();
+        break;
+      case "edit-entry":
+        state = beginEditCalculateEntry(state, Number(el.dataset["index"]));
+        rerenderFull();
+        refocusField("calculateEditDraft");
+        break;
+      case "commit-entry-edit":
+        state = commitCalculateEditEntry(state);
+        rerenderFull();
+        if (state.calculateEditing !== null) refocusField("calculateEditDraft");
+        break;
+      case "cancel-entry-edit":
+        state = cancelCalculateEditEntry(state);
+        rerenderFull();
+        break;
       case "remove-entry":
-        state = removeCalculateEntry(state, Number(el.dataset["index"]));
+        state = removeCalculateEntries(state, parseIndexList(el.dataset["indices"]));
         rerenderFull();
         break;
       case "commit-overlap-draft":
         state = commitOverlapDraft(state);
         rerenderFull();
-        refocusDraft("overlapDraft");
+        refocusField("overlapDraft");
         break;
       case "select-overlap-entry":
         state = selectOverlapEntry(state, Number(el.dataset["index"]));
+        rerenderFull();
+        break;
+      case "toggle-overlap-check":
+        state = toggleOverlapChecked(state, Number(el.dataset["index"]));
+        rerenderFull();
+        break;
+      case "set-overlap-checks":
+        state = setOverlapChecked(state, parseIndexList(el.dataset["indices"]));
+        rerenderFull();
+        break;
+      case "edit-overlap-entry":
+        state = beginEditOverlapEntry(state, Number(el.dataset["index"]));
+        rerenderFull();
+        refocusField("overlapEditDraft");
+        break;
+      case "commit-overlap-edit":
+        state = commitOverlapEditEntry(state);
+        rerenderFull();
+        if (state.overlapEditing !== null) refocusField("overlapEditDraft");
+        break;
+      case "cancel-overlap-edit":
+        state = cancelOverlapEditEntry(state);
         rerenderFull();
         break;
       case "clear-overlap-filter":
@@ -333,6 +452,59 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
         break;
       case "handoff-vendor":
         state = sendToVendor(state, line);
+        rerenderFull();
+        break;
+      // The bulk bar is the ticked set's version of the per-result handoff
+      // buttons. Each one folds the same single-line transition over every
+      // ticked row, then empties the ticks: the hand-off is done, and leaving
+      // them lit invites doing it a second time on the way back.
+      case "bulk-overlap": {
+        for (const l of checkedCalculateEntries(state)) state = addToOverlap(state, l);
+        state = setCalculateChecked(state, []);
+        rerenderFull();
+        break;
+      }
+      case "bulk-vendor": {
+        for (const l of checkedCalculateEntries(state)) state = sendToVendor(state, l);
+        state = setCalculateChecked(state, []);
+        rerenderFull();
+        break;
+      }
+      case "bulk-vlsm": {
+        // VLSM takes one supernet, which is why the button is disabled unless
+        // exactly one row is ticked. The label is dropped: the supernet box is
+        // asking for an address block, not for the name someone gave it.
+        const first = checkedCalculateEntries(state)[0];
+        const cidr = first === undefined ? null : bareCidr(first);
+        if (cidr !== null) {
+          state = useAsVlsmSupernet(state, cidr);
+          state = setCalculateChecked(state, []);
+          rerenderFull();
+        }
+        break;
+      }
+      case "bulk-remove":
+        state = removeCalculateEntries(state, state.calculateChecked);
+        rerenderFull();
+        break;
+      case "bulk-overlap-vendor": {
+        for (const l of checkedOverlapEntries(state)) state = sendToVendor(state, l);
+        state = setOverlapChecked(state, []);
+        rerenderFull();
+        break;
+      }
+      case "bulk-overlap-vlsm": {
+        const first = checkedOverlapEntries(state)[0];
+        const cidr = first === undefined ? null : bareCidr(first);
+        if (cidr !== null) {
+          state = useAsVlsmSupernet(state, cidr);
+          state = setOverlapChecked(state, []);
+          rerenderFull();
+        }
+        break;
+      }
+      case "bulk-overlap-remove":
+        state = removeOverlapEntries(state, state.overlapChecked);
         rerenderFull();
         break;
       case "overlap-to-vendor": {
@@ -396,6 +568,11 @@ export function clearCurrentMode(state: ShellState): ShellState {
         calculateSelected: 0,
         calculateDraft: "",
         calculateDraftError: "",
+        // Everything index-shaped goes with the list it pointed into.
+        calculateEditing: null,
+        calculateEditDraft: "",
+        calculateEditError: "",
+        calculateChecked: [],
         splitTarget: null,
       };
     case "overlap":
@@ -405,6 +582,10 @@ export function clearCurrentMode(state: ShellState): ShellState {
         overlapSelected: null,
         overlapDraft: "",
         overlapDraftError: "",
+        overlapEditing: null,
+        overlapEditDraft: "",
+        overlapEditError: "",
+        overlapChecked: [],
         // The edit-as-text toggle is a view preference rather than content, so
         // clearing the list leaves you in whichever editor you were using.
       };

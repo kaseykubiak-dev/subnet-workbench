@@ -65,9 +65,10 @@ const SHARE_KEYS = [
   "calculateSelected",
   "splitTarget",
   "overlapInput",
-  // The Overlap focus filter travels; the draft box, its errors, and the
-  // edit-as-text toggle do not. Those are the state of someone's half-finished
-  // keystroke, not of the analysis they meant to hand you.
+  // The Overlap focus filter travels; the draft box, its errors, the
+  // edit-as-text toggle, the inline editor and the ticked set do not. Those are
+  // the state of someone's half-finished keystroke or an action they have not
+  // taken yet, not of the analysis they meant to hand you.
   "overlapSelected",
   "vlsmSupernetInput",
   "vlsmRequirementsInput",

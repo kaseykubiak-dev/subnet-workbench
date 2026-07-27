@@ -44,6 +44,16 @@ import {
   renderOverlapOutput,
 } from "./overlapView";
 import { PLAN_CSS, renderPlanInputs, renderPlanOutput } from "./planView";
+import {
+  ROSTER_CSS,
+  renderCheckAll,
+  renderRoster,
+  renderRosterHead,
+  type BulkAction,
+  type RosterActions,
+  type RosterRow,
+  type RosterSpec,
+} from "./rosterView";
 import { SERVICES_CSS } from "./servicesView";
 import type { ShellState } from "./state";
 import {
@@ -144,6 +154,58 @@ function fieldLabel(text: string): string {
   return `<div class="swb-field-label">${esc(text)}</div>`;
 }
 
+/** Calculate's half of the roster contract; Overlap keeps its own set. */
+const CALCULATE_ROSTER: RosterActions = {
+  select: "select-entry",
+  check: "toggle-entry-check",
+  checkAll: "set-entry-checks",
+  beginEdit: "edit-entry",
+  commitEdit: "commit-entry-edit",
+  cancelEdit: "cancel-entry-edit",
+  remove: "remove-entry",
+};
+
+/**
+ * The bulk bar Calculate offers.
+ *
+ * Overlap is on the list because sweeping several subnets into a collision
+ * check is the whole reason someone builds a roster here; VLSM is not, beyond
+ * one row, because a supernet is singular by definition.
+ */
+const CALCULATE_BULK: BulkAction[] = [
+  { action: "bulk-overlap", label: "Add to Overlap" },
+  { action: "bulk-vendor", label: "Vendor syntax" },
+  { action: "bulk-vlsm", label: "VLSM supernet", singleOnly: true },
+  { action: "bulk-remove", label: "Remove", danger: true },
+];
+
+function calculateRoster(state: ShellState, entries: string[]): RosterSpec {
+  const rows: RosterRow[] = entries.map((line) => {
+    const s = parseSubnetList(line).subnets[0];
+    return {
+      raw: line,
+      label: s?.label ?? "",
+      cidr: s === undefined ? undefined : `${numberToIp(s.network)}/${s.prefix}`,
+      className: s === undefined ? "swb-entry-bad" : "",
+      trailing: "",
+      // Calculate's bad rows stay clickable: selecting one is how you get the
+      // parser's complaint about it into the results panel.
+      selectable: true,
+    };
+  });
+  return {
+    rows,
+    selected: state.calculateSelected,
+    editing: state.calculateEditing,
+    editDraft: state.calculateEditDraft,
+    editError: state.calculateEditError,
+    checked: state.calculateChecked,
+    editField: "calculateEditDraft",
+    actions: CALCULATE_ROSTER,
+    bulk: CALCULATE_BULK,
+  };
+}
+
 /**
  * The left column. The platform fact block is appended for every mode rather
  * than only Calculate: the platform is global state, so its constraints stay
@@ -157,36 +219,13 @@ function modeInputPanel(state: ShellState): string {
   switch (state.mode) {
     case "calculate": {
       const entries = calculateEntries(state);
-      const rows = entries
-        .map((line, i) => {
-          const parsed = parseSubnetList(line);
-          const s = parsed.subnets[0];
-          const sel = i === state.calculateSelected ? " swb-sel" : "";
-          const idx = String(i + 1).padStart(2, "0");
-          if (s === undefined) {
-            return (
-              `<div class="swb-entry swb-entry-bad${sel}" data-action="select-entry" data-index="${i}">` +
-              `<span class="swb-entry-idx">${idx}</span>` +
-              `<span class="swb-entry-lbl">${esc(line)}</span>` +
-              `<button class="swb-entry-x" data-action="remove-entry" data-index="${i}" aria-label="Remove entry">&times;</button>` +
-              `</div>`
-            );
-          }
-          const cidr = `${numberToIp(s.network)}/${s.prefix}`;
-          return (
-            `<div class="swb-entry${sel}" data-action="select-entry" data-index="${i}">` +
-            `<span class="swb-entry-idx">${idx}</span>` +
-            `<span class="swb-entry-lbl">${esc(s.label ?? "")}</span>` +
-            `<span class="swb-entry-cidr">${esc(cidr)}</span>` +
-            `<button class="swb-entry-x" data-action="remove-entry" data-index="${i}" aria-label="Remove entry">&times;</button>` +
-            `</div>`
-          );
-        })
-        .join("");
       const list =
         entries.length > 0
-          ? fieldLabel(`Subnets · ${entries.length}`) +
-            `<div class="swb-entries">${rows}</div>`
+          ? renderRosterHead(
+              `Subnets &middot; ${entries.length}`,
+              "",
+              [renderCheckAll(CALCULATE_ROSTER.checkAll, entries.length)]
+            ) + renderRoster(calculateRoster(state, entries))
           : "";
       const draftErrors =
         state.calculateDraftError !== ""
@@ -519,6 +558,7 @@ svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main 
   .swb-reserved { margin-left: 0; text-align: left; }
 }
 ${VLSM_LEDGER_CSS}
+${ROSTER_CSS}
 ${OVERLAP_CSS}
 ${CLOUD_CSS}
 ${CAPACITY_CSS}

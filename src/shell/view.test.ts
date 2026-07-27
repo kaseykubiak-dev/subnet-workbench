@@ -102,9 +102,11 @@ describe("renderInputPanel", () => {
         calculateSelected: 1,
       })
     );
-    expect(html).toContain("Subnets · 2");
+    expect(html).toContain("Subnets &middot; 2");
     expect(html.match(/data-action="select-entry"/g)).toHaveLength(2);
     expect(html.match(/data-action="remove-entry"/g)).toHaveLength(2);
+    expect(html.match(/data-action="edit-entry"/g)).toHaveLength(2);
+    expect(html.match(/data-action="toggle-entry-check"/g)).toHaveLength(2);
     expect(html.match(/swb-sel/g)).toHaveLength(1);
     expect(html).toContain(
       'class="swb-entry swb-sel" data-action="select-entry" data-index="1"'
