@@ -15,17 +15,23 @@ import { renderPrefixSplit } from "../visuals/prefixSplit";
 import type { CapacityWorkload, Mode, ShellState } from "./state";
 import {
   addToOverlap,
+  clearOverlapFilter,
   commitCalculateDraft,
+  commitOverlapDraft,
   effectiveSplitTarget,
   initialState,
+  overlapSource,
   removeCalculateEntry,
+  removeOverlapEntries,
   selectCalculateEntry,
+  selectOverlapEntry,
   selectedCalculateSubnet,
   sendToPlan,
   sendToVendor,
   setMode,
   setPlatform,
   setServiceCount,
+  toggleOverlapEditText,
   toggleService,
   useAsVlsmSupernet,
 } from "./state";
@@ -99,9 +105,9 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
     if (foot !== null) foot.innerHTML = renderFooter(state);
   };
 
-  /** After a full rerender, put focus back in the add-subnet box. */
-  const refocusDraft = (): void => {
-    const box = root.querySelector<HTMLTextAreaElement>('[data-field="calculateDraft"]');
+  /** After a full rerender, put focus back in an add-subnet box. */
+  const refocusDraft = (field: "calculateDraft" | "overlapDraft"): void => {
+    const box = root.querySelector<HTMLTextAreaElement>(`[data-field="${field}"]`);
     if (box !== null) {
       box.focus();
       box.setSelectionRange(box.value.length, box.value.length);
@@ -212,9 +218,12 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       rerenderResults();
       return;
     }
-    if (el instanceof HTMLTextAreaElement && field === "calculateDraft") {
+    if (
+      el instanceof HTMLTextAreaElement &&
+      (field === "calculateDraft" || field === "overlapDraft")
+    ) {
       // Draft typing never re-renders: the output tracks committed entries.
-      state = { ...state, calculateDraft: el.value };
+      state = { ...state, [field]: el.value };
       return;
     }
     if (
@@ -232,16 +241,21 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
 
   root.addEventListener("keydown", (event) => {
     const el = event.target;
-    if (
-      el instanceof HTMLTextAreaElement &&
-      el.dataset["field"] === "calculateDraft" &&
-      event.key === "Enter" &&
-      !event.shiftKey
-    ) {
+    if (!(el instanceof HTMLTextAreaElement)) return;
+    if (event.key !== "Enter" || event.shiftKey) return;
+    const field = el.dataset["field"];
+    if (field === "calculateDraft") {
       event.preventDefault();
       state = commitCalculateDraft(state);
       rerenderFull();
-      refocusDraft();
+      refocusDraft("calculateDraft");
+      return;
+    }
+    if (field === "overlapDraft") {
+      event.preventDefault();
+      state = commitOverlapDraft(state);
+      rerenderFull();
+      refocusDraft("overlapDraft");
     }
   });
 
@@ -276,7 +290,7 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
       case "commit-draft":
         state = commitCalculateDraft(state);
         rerenderFull();
-        refocusDraft();
+        refocusDraft("calculateDraft");
         break;
       case "select-entry":
         state = selectCalculateEntry(state, Number(el.dataset["index"]));
@@ -284,6 +298,29 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
         break;
       case "remove-entry":
         state = removeCalculateEntry(state, Number(el.dataset["index"]));
+        rerenderFull();
+        break;
+      case "commit-overlap-draft":
+        state = commitOverlapDraft(state);
+        rerenderFull();
+        refocusDraft("overlapDraft");
+        break;
+      case "select-overlap-entry":
+        state = selectOverlapEntry(state, Number(el.dataset["index"]));
+        rerenderFull();
+        break;
+      case "clear-overlap-filter":
+        state = clearOverlapFilter(state);
+        rerenderFull();
+        break;
+      case "remove-overlap-entry":
+        // Both the single "x" and the "remove both sides" button land here;
+        // the only difference is how many indices the row carried.
+        state = removeOverlapEntries(state, parseIndexList(el.dataset["indices"]));
+        rerenderFull();
+        break;
+      case "toggle-overlap-text":
+        state = toggleOverlapEditText(state);
         rerenderFull();
         break;
       case "handoff-overlap":
@@ -299,7 +336,7 @@ export function mountShell(root: HTMLElement, options: MountOptions = {}): Shell
         rerenderFull();
         break;
       case "overlap-to-vendor": {
-        for (const s of parseSubnetList(state.overlapInput).subnets) {
+        for (const s of parseSubnetList(overlapSource(state)).subnets) {
           state = sendToVendor(state, handoffLine(s));
         }
         rerenderFull();
@@ -362,7 +399,15 @@ export function clearCurrentMode(state: ShellState): ShellState {
         splitTarget: null,
       };
     case "overlap":
-      return { ...state, overlapInput: "" };
+      return {
+        ...state,
+        overlapInput: "",
+        overlapSelected: null,
+        overlapDraft: "",
+        overlapDraftError: "",
+        // The edit-as-text toggle is a view preference rather than content, so
+        // clearing the list leaves you in whichever editor you were using.
+      };
     case "vlsm":
       return {
         ...state,
@@ -406,6 +451,22 @@ export function clearCurrentMode(state: ShellState): ShellState {
     case "vendor":
       return { ...state, vendorInput: "" };
   }
+}
+
+/**
+ * Read a `data-indices="0,3"` attribute into entry indices.
+ *
+ * One attribute carries both the single-row "x" and the "remove both sides"
+ * button so the handler does not have to branch on which one was clicked.
+ * Anything unparseable is dropped here; `removeOverlapEntries` treats an
+ * empty list as a no-op.
+ */
+function parseIndexList(raw: string | undefined): number[] {
+  if (raw === undefined || raw === "") return [];
+  return raw
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((n) => Number.isInteger(n));
 }
 
 async function copyWithFeedback(button: HTMLElement, text: string): Promise<void> {

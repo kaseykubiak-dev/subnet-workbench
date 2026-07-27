@@ -88,8 +88,31 @@ export interface ShellState {
   calculateDraftError: string;
   /** Calculate: prefix-slider target; null = derived default (prefix+2). */
   splitTarget: number | null;
-  /** Overlap: one subnet per line. */
+  /** Overlap: committed entries, one subnet line each. */
   overlapInput: string;
+  /**
+   * Overlap: index of the focused entry; null means no filter.
+   *
+   * Unlike `calculateSelected` this is nullable, because the two lists mean
+   * different things by selection. In Calculate a row is the subject and one
+   * of them is always the subject; in Overlap the whole list is the subject
+   * and focusing a row narrows the report, so "no filter" has to be a state
+   * you can get back to.
+   */
+  overlapSelected: number | null;
+  /** Overlap: uncommitted content of the add-subnet box. */
+  overlapDraft: string;
+  /** Overlap: lines that failed the last commit (newline-joined messages). */
+  overlapDraftError: string;
+  /**
+   * Overlap: true while the roster is swapped for the raw textarea.
+   *
+   * Overlap's opening move is pasting thirty lines out of a spreadsheet and
+   * then editing that block wholesale, which a committed-entry list makes
+   * harder than the textarea it replaced. The toggle keeps both affordances
+   * instead of trading one for the other.
+   */
+  overlapEditText: boolean;
   /** VLSM: the supernet line. */
   vlsmSupernetInput: string;
   /** VLSM: one requirement per line. */
@@ -165,6 +188,10 @@ export const initialState: ShellState = {
   calculateDraftError: "",
   splitTarget: null,
   overlapInput: "",
+  overlapSelected: null,
+  overlapDraft: "",
+  overlapDraftError: "",
+  overlapEditText: false,
   vlsmSupernetInput: "",
   vlsmRequirementsInput: "",
   vlsmHeadroom: 0,
@@ -228,12 +255,19 @@ function appendLine(existing: string, line: string): string {
   return lines.join("\n");
 }
 
-/** Hand-off: push a subnet line into the Overlap list and switch there. */
+/**
+ * Hand-off: push a subnet line into the Overlap list and switch there.
+ *
+ * The focus filter is dropped on arrival. You came here to find out whether
+ * the subnet you just sent collides with anything, and a report still narrowed
+ * to some other row would answer a question you are no longer asking.
+ */
 export function addToOverlap(state: ShellState, line: string): ShellState {
   return {
     ...state,
     mode: "overlap",
     overlapInput: appendLine(state.overlapInput, line),
+    overlapSelected: null,
   };
 }
 
@@ -321,12 +355,36 @@ export function serviceSelectionsFor(state: ShellState): ServiceSelection[] {
   return selections;
 }
 
-/** Calculate entries: the committed lines, trimmed, empties dropped. */
-export function calculateEntries(state: ShellState): string[] {
-  return state.calculateInput
+/** The committed lines of a list field, trimmed, empties dropped. */
+function splitEntries(text: string): string[] {
+  return text
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
+}
+
+/** Calculate entries: the committed lines, trimmed, empties dropped. */
+export function calculateEntries(state: ShellState): string[] {
+  return splitEntries(state.calculateInput);
+}
+
+/** Overlap entries: the committed lines, trimmed, empties dropped. */
+export function overlapEntries(state: ShellState): string[] {
+  return splitEntries(state.overlapInput);
+}
+
+/**
+ * The text the Overlap report is parsed from.
+ *
+ * In roster mode this is the normalized entry join, which is what makes entry
+ * index N and parse `lineNumber` N+1 the same row: `parseSubnetList` numbers
+ * every line it is given, blanks included, so feeding it the raw field would
+ * desynchronize the roster from its own findings. In text mode the raw field
+ * is used instead, so the inline error line numbers match the textarea the
+ * user is looking at.
+ */
+export function overlapSource(state: ShellState): string {
+  return state.overlapEditText ? state.overlapInput : overlapEntries(state).join("\n");
 }
 
 /** The parsed subnet for the selected Calculate entry, if valid. */
@@ -342,35 +400,86 @@ function clampSelection(index: number, count: number): number {
   return Math.min(Math.max(0, index), count - 1);
 }
 
+interface DraftCommit {
+  /** The entry list after the valid draft lines were appended. */
+  entries: string[];
+  /** The last valid line added, trimmed; undefined when none parsed. */
+  lastAdded: string | undefined;
+  /** What stays behind in the draft box (the lines that failed). */
+  draft: string;
+  /** Newline-joined "raw —> message" for each failed line. */
+  draftError: string;
+  /** False when the draft was blank, meaning the caller should not change state. */
+  changed: boolean;
+}
+
+/**
+ * Commit a draft box into an entry list. Shared by Calculate and Overlap so
+ * the two rosters cannot drift on the things a user would notice: dedupe,
+ * multi-line paste, and bad lines staying put with their reason attached
+ * rather than being silently dropped.
+ */
+function commitDraftLines(input: string, draft: string): DraftCommit {
+  const { subnets, errors } = parseSubnetList(draft);
+  if (subnets.length === 0 && errors.length === 0) {
+    return {
+      entries: splitEntries(input),
+      lastAdded: undefined,
+      draft,
+      draftError: "",
+      changed: false,
+    };
+  }
+  let next = input;
+  for (const s of subnets) {
+    next = appendLine(next, s.raw);
+  }
+  return {
+    entries: splitEntries(next),
+    lastAdded: subnets[subnets.length - 1]?.raw.trim(),
+    draft: errors.map((e) => e.raw).join("\n"),
+    draftError: errors.map((e) => `${e.raw} —> ${e.message}`).join("\n"),
+    changed: true,
+  };
+}
+
 /**
  * Commit the draft box: valid lines join the entry list (deduped), invalid
  * lines stay in the draft with their errors surfaced. Selection moves to
  * the last entry added.
  */
 export function commitCalculateDraft(state: ShellState): ShellState {
-  const { subnets, errors } = parseSubnetList(state.calculateDraft);
-  if (subnets.length === 0 && errors.length === 0) return state;
-  let input = state.calculateInput;
-  for (const s of subnets) {
-    input = appendLine(input, s.raw);
-  }
-  const entries = input
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  const lastAdded = subnets[subnets.length - 1];
+  const commit = commitDraftLines(state.calculateInput, state.calculateDraft);
+  if (!commit.changed) return state;
   const selected =
-    lastAdded !== undefined
-      ? Math.max(0, entries.indexOf(lastAdded.raw.trim()))
-      : clampSelection(state.calculateSelected, entries.length);
+    commit.lastAdded !== undefined
+      ? Math.max(0, commit.entries.indexOf(commit.lastAdded))
+      : clampSelection(state.calculateSelected, commit.entries.length);
   return {
     ...state,
-    calculateInput: entries.join("\n"),
+    calculateInput: commit.entries.join("\n"),
     calculateSelected: selected,
-    calculateDraft: errors.map((e) => e.raw).join("\n"),
-    calculateDraftError: errors
-      .map((e) => `${e.raw} —> ${e.message}`)
-      .join("\n"),
+    calculateDraft: commit.draft,
+    calculateDraftError: commit.draftError,
+  };
+}
+
+/**
+ * Commit the Overlap draft box. Same mechanics as Calculate, opposite
+ * selection behavior: the filter is cleared rather than moved to the new row.
+ * Adding a subnet is the moment you want to know whether it collides with
+ * anything at all, and a report still narrowed to the row you were reading a
+ * second ago would hide exactly that.
+ */
+export function commitOverlapDraft(state: ShellState): ShellState {
+  const commit = commitDraftLines(state.overlapInput, state.overlapDraft);
+  if (!commit.changed) return state;
+  return {
+    ...state,
+    overlapInput: commit.entries.join("\n"),
+    overlapSelected: null,
+    overlapDraft: commit.draft,
+    overlapDraftError: commit.draftError,
   };
 }
 
@@ -391,6 +500,71 @@ export function removeCalculateEntry(state: ShellState, index: number): ShellSta
     ...state,
     calculateInput: entries.join("\n"),
     calculateSelected: clampSelection(selected, entries.length),
+  };
+}
+
+/**
+ * Focus an Overlap entry. Clicking the focused row again clears the filter,
+ * so the way out of a narrowed report is the same gesture that got you in.
+ */
+export function selectOverlapEntry(state: ShellState, index: number): ShellState {
+  if (index < 0 || index >= overlapEntries(state).length) return state;
+  return { ...state, overlapSelected: state.overlapSelected === index ? null : index };
+}
+
+/** Drop the Overlap focus filter: the report shows every conflict again. */
+export function clearOverlapFilter(state: ShellState): ShellState {
+  return { ...state, overlapSelected: null };
+}
+
+/**
+ * Remove one or more Overlap entries in a single step.
+ *
+ * Plural because the common repair for a duplicate entry is deleting both
+ * sides of the conflict, and doing that as two separate removals means the
+ * second index has already shifted under the user by the time they click it.
+ * Indices are resolved against the list as it stands before anything is cut.
+ */
+export function removeOverlapEntries(state: ShellState, indices: number[]): ShellState {
+  const entries = overlapEntries(state);
+  const doomed = [...new Set(indices)].filter(
+    (i) => Number.isInteger(i) && i >= 0 && i < entries.length
+  );
+  if (doomed.length === 0) return state;
+  const kept = entries.filter((_, i) => !doomed.includes(i));
+  let selected = state.overlapSelected;
+  if (selected !== null) {
+    const focused = selected;
+    selected = doomed.includes(focused)
+      ? null
+      : focused - doomed.filter((i) => i < focused).length;
+  }
+  return { ...state, overlapInput: kept.join("\n"), overlapSelected: selected };
+}
+
+/**
+ * Swap the Overlap roster for the raw textarea, or back.
+ *
+ * Both directions clear the focus filter, because it is an entry index and
+ * free-text editing can move or delete the line underneath it. Leaving text
+ * mode also normalizes the field, which is what keeps entry index and parse
+ * line number aligned for the roster on the way back in.
+ */
+export function toggleOverlapEditText(state: ShellState): ShellState {
+  if (state.overlapEditText) {
+    return {
+      ...state,
+      overlapEditText: false,
+      overlapInput: overlapEntries(state).join("\n"),
+      overlapSelected: null,
+    };
+  }
+  return {
+    ...state,
+    overlapEditText: true,
+    overlapSelected: null,
+    overlapDraft: "",
+    overlapDraftError: "",
   };
 }
 

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { numberToIp } from "../engine/ipv4";
 import { parseSubnetList } from "../engine/parse";
-import { describeConflict, findOverlaps, renderOverlapText } from "./overlap";
+import {
+  conflictsForLine,
+  describeConflict,
+  findOverlaps,
+  renderOverlapText,
+  severityForLine,
+} from "./overlap";
 
 const run = (text: string) => findOverlaps(parseSubnetList(text).subnets);
 
@@ -104,6 +110,48 @@ describe("renderOverlapText", () => {
     expect(lines[0]).toMatch(/^2 conflicts/);
     expect(lines[1]).toMatch(/^ERROR {4}Dup1/);
     expect(lines[2]).toMatch(/^WARNING {2}Super/);
+  });
+});
+
+describe("conflictsForLine / severityForLine", () => {
+  // Line 1 contains line 2 (warning); lines 3 and 4 are identical (error).
+  const r = run(
+    [
+      "Knoxville: 10.10.0.0/16",
+      "Nashville: 10.10.32.0/20",
+      "DC-Core: 10.30.0.0/24",
+      "DC-Core-B: 10.30.0.0/24",
+      "Guest: 192.168.50.0/24",
+    ].join("\n")
+  );
+
+  it("matches a line on either side of the pair", () => {
+    expect(conflictsForLine(r, 1)).toHaveLength(1);
+    expect(conflictsForLine(r, 2)).toHaveLength(1);
+    expect(conflictsForLine(r, 1)[0]).toBe(conflictsForLine(r, 2)[0]);
+  });
+
+  it("returns nothing for a clean line", () => {
+    expect(conflictsForLine(r, 5)).toEqual([]);
+    expect(severityForLine(r, 5)).toBeNull();
+  });
+
+  it("reports the severity of the line's own conflicts", () => {
+    expect(severityForLine(r, 1)).toBe("warning");
+    expect(severityForLine(r, 3)).toBe("error");
+  });
+
+  it("reports the worst severity when a line has several", () => {
+    // Line 1 is identical to line 2 (error) and contains line 3 (warning).
+    const mixed = run("A: 10.0.0.0/16\nB: 10.0.0.0/16\nC: 10.0.1.0/24");
+    expect(conflictsForLine(mixed, 1)).toHaveLength(2);
+    expect(severityForLine(mixed, 1)).toBe("error");
+    expect(severityForLine(mixed, 3)).toBe("warning");
+  });
+
+  it("ignores a line number nobody holds", () => {
+    expect(conflictsForLine(r, 99)).toEqual([]);
+    expect(severityForLine(r, 0)).toBeNull();
   });
 });
 

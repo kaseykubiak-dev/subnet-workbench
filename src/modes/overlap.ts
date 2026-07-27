@@ -125,6 +125,36 @@ export function findOverlaps(subnets: ParsedSubnet[]): OverlapResult {
   return { subnets, conflicts, status, summary };
 }
 
+/**
+ * The conflicts a given input line takes part in, in the result's own order.
+ *
+ * Keyed on `lineNumber` rather than on array position because the caller holds
+ * a list of entries, not a list of parsed subnets: a line that failed to parse
+ * still occupies a row in the UI but never reaches `findOverlaps`, so position
+ * in `result.subnets` and position in the user's list are not the same number.
+ */
+export function conflictsForLine(result: OverlapResult, lineNumber: number): Conflict[] {
+  return result.conflicts.filter(
+    (c) => c.a.lineNumber === lineNumber || c.b.lineNumber === lineNumber
+  );
+}
+
+/**
+ * The loudest severity a line is implicated in, or null when it is clean.
+ *
+ * A row that is contained by one subnet and identical to another should wear
+ * the error badge, not the warning one, so this reports the worst rather than
+ * the first.
+ */
+export function severityForLine(
+  result: OverlapResult,
+  lineNumber: number
+): ConflictSeverity | null {
+  const mine = conflictsForLine(result, lineNumber);
+  if (mine.length === 0) return null;
+  return mine.some((c) => c.severity === "error") ? "error" : "warning";
+}
+
 /** One human-readable sentence describing a conflict. */
 export function describeConflict(c: Conflict): string {
   const rangeText = `overlap ${numberToIp(c.range.first)} - ${numberToIp(c.range.last)}`;

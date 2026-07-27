@@ -16,7 +16,6 @@ import { numberToIp } from "../engine/ipv4";
 import { parseSubnetList } from "../engine/parse";
 import type { ParseError, ParsedSubnet } from "../engine/parse";
 import { calculate, renderCalculateText } from "../modes/calculate";
-import { findOverlaps, renderOverlapText } from "../modes/overlap";
 import {
   allocateVlsm,
   parseRequirementList,
@@ -26,7 +25,6 @@ import { renderVendor, vendorById } from "../vendor/render";
 import { VENDORS } from "../vendor/templates";
 import { renderBitRibbon } from "../visuals/bitRibbon";
 import { renderPrefixSplit } from "../visuals/prefixSplit";
-import { renderSpaceMap } from "../visuals/spaceMap";
 import { VLSM_LEDGER_CSS, renderVlsmLedger } from "../visuals/vlsmLedger";
 import { COLOR, esc } from "../visuals/svg";
 import {
@@ -40,6 +38,11 @@ import {
   renderCloudFacts,
   renderPlatformSelect,
 } from "./cloudView";
+import {
+  OVERLAP_CSS,
+  renderOverlapInputs,
+  renderOverlapOutput,
+} from "./overlapView";
 import { PLAN_CSS, renderPlanInputs, renderPlanOutput } from "./planView";
 import { SERVICES_CSS } from "./servicesView";
 import type { ShellState } from "./state";
@@ -97,13 +100,6 @@ const HINT_SVG_CALCULATE =
   `<rect x="70" y="24" width="9" height="16" fill="${COLOR.blue}" fill-opacity="0.12" stroke="${COLOR.dim}" stroke-opacity="0.6"/>` +
   `<rect x="81" y="24" width="9" height="16" fill="${COLOR.blue}" fill-opacity="0.12" stroke="${COLOR.dim}" stroke-opacity="0.6"/>` +
   `<line x1="57" y1="16" x2="57" y2="48" stroke="${COLOR.amber}" stroke-dasharray="3 3"/>` +
-  `</svg>`;
-
-const HINT_SVG_OVERLAP =
-  `<svg width="90" height="64" viewBox="0 0 90 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
-  `<rect x="2" y="14" width="54" height="14" fill="${COLOR.teal}" fill-opacity="0.12" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
-  `<rect x="34" y="36" width="42" height="14" fill="${COLOR.teal}" fill-opacity="0.12" stroke="${COLOR.teal}" stroke-opacity="0.7"/>` +
-  `<rect x="34" y="14" width="22" height="36" fill="${COLOR.amber}" fill-opacity="0.14" stroke="${COLOR.amber}" stroke-dasharray="3 3"/>` +
   `</svg>`;
 
 const HINT_SVG_VLSM =
@@ -211,11 +207,7 @@ function modeInputPanel(state: ShellState): string {
       );
     }
     case "overlap":
-      return (
-        fieldLabel("Subnet list (one per line)") +
-        textarea("overlapInput", state.overlapInput, 12, "Knoxville: 10.10.0.0/16\nNashville: 10.10.32.0/20\n# labels optional, bad lines flagged inline") +
-        `<div class="swb-run"><button class="swb-btn swb-ghost" data-action="clear-mode">Clear</button></div>`
-      );
+      return renderOverlapInputs(state);
     case "vlsm":
       return (
         fieldLabel("Supernet") +
@@ -285,26 +277,6 @@ function renderCalculateOutput(state: ShellState): string {
       handoffBtn("handoff-vlsm", `${numberToIp(first.network)}/${first.prefix}`, "Use as VLSM supernet"),
       handoffBtn("handoff-vendor", line, "Vendor syntax")
     )
-  );
-}
-
-function renderOverlapOutput(state: ShellState): string {
-  const { subnets, errors } = parseSubnetList(state.overlapInput);
-  const result = findOverlaps(subnets);
-  if (subnets.length === 0) {
-    return (
-      errorsBlock(errors) +
-      hint(
-        HINT_SVG_OVERLAP,
-        "<b>Waiting on a list.</b> Paste subnets one per line and conflicts get flagged with severity. Labels make the report readable: &quot;Knoxville overlaps Nashville&quot; beats &quot;these two overlap&quot;."
-      )
-    );
-  }
-  return (
-    errorsBlock(errors) +
-    `<div class="swb-visual">${renderSpaceMap(result)}</div>` +
-    pre(renderOverlapText(result)) +
-    handoffRow(handoffBtn("overlap-to-vendor", "", "Send list to Vendor Syntax"))
   );
 }
 
@@ -547,6 +519,7 @@ svg[data-visual="prefix-split"]:has(.swb-split-block:hover) .swb-split-hdr-main 
   .swb-reserved { margin-left: 0; text-align: left; }
 }
 ${VLSM_LEDGER_CSS}
+${OVERLAP_CSS}
 ${CLOUD_CSS}
 ${CAPACITY_CSS}
 ${SERVICES_CSS}

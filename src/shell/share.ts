@@ -30,6 +30,7 @@ type SharePayload = { v: number } & Partial<
     | "calculateSelected"
     | "splitTarget"
     | "overlapInput"
+    | "overlapSelected"
     | "vlsmSupernetInput"
     | "vlsmRequirementsInput"
     | "vlsmHeadroom"
@@ -64,6 +65,10 @@ const SHARE_KEYS = [
   "calculateSelected",
   "splitTarget",
   "overlapInput",
+  // The Overlap focus filter travels; the draft box, its errors, and the
+  // edit-as-text toggle do not. Those are the state of someone's half-finished
+  // keystroke, not of the analysis they meant to hand you.
+  "overlapSelected",
   "vlsmSupernetInput",
   "vlsmRequirementsInput",
   "vlsmHeadroom",
@@ -191,6 +196,7 @@ export function decodeShare(fragment: string): Partial<ShellState> | null {
   for (const key of [
     "calculateSelected",
     "splitTarget",
+    "overlapSelected",
     "vlsmHeadroom",
     "aksNodes",
     "aksMaxPods",

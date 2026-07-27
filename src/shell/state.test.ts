@@ -4,18 +4,25 @@ import {
   addToOverlap,
   aksPlanFor,
   calculateEntries,
+  clearOverlapFilter,
   commitCalculateDraft,
+  commitOverlapDraft,
   effectiveSplitTarget,
   eksPlanFor,
   heldSubnetCount,
   initialState,
   isCloudMode,
+  overlapEntries,
+  overlapSource,
   removeCalculateEntry,
+  removeOverlapEntries,
   selectCalculateEntry,
+  selectOverlapEntry,
   selectedCalculateSubnet,
   sendToVendor,
   setMode,
   setPlatform,
+  toggleOverlapEditText,
   useAsVlsmSupernet,
 } from "./state";
 import { clearCurrentMode } from "./app";
@@ -106,6 +113,157 @@ describe("removeCalculateEntry", () => {
 
   it("ignores out-of-range indexes", () => {
     expect(removeCalculateEntry(base, 9)).toEqual(base);
+  });
+});
+
+describe("commitOverlapDraft", () => {
+  it("moves valid lines into the entry list", () => {
+    const s = commitOverlapDraft({
+      ...initialState,
+      overlapDraft: "Knoxville: 10.10.0.0/16\nNashville: 10.10.32.0/20",
+    });
+    expect(overlapEntries(s)).toEqual([
+      "Knoxville: 10.10.0.0/16",
+      "Nashville: 10.10.32.0/20",
+    ]);
+    expect(s.overlapDraft).toBe("");
+    expect(s.overlapDraftError).toBe("");
+  });
+
+  it("keeps bad lines in the draft with their reason", () => {
+    const s = commitOverlapDraft({
+      ...initialState,
+      overlapDraft: "10.0.0.0/24\nnot-a-subnet",
+    });
+    expect(overlapEntries(s)).toEqual(["10.0.0.0/24"]);
+    expect(s.overlapDraft).toBe("not-a-subnet");
+    expect(s.overlapDraftError).toMatch(/not-a-subnet/);
+  });
+
+  it("dedupes against what is already committed", () => {
+    const s = commitOverlapDraft({
+      ...initialState,
+      overlapInput: "10.0.0.0/24",
+      overlapDraft: "10.0.0.0/24",
+    });
+    expect(overlapEntries(s)).toEqual(["10.0.0.0/24"]);
+  });
+
+  it("is a no-op on a blank draft", () => {
+    const before = { ...initialState, overlapInput: "10.0.0.0/24", overlapSelected: 0 };
+    expect(commitOverlapDraft(before)).toBe(before);
+  });
+
+  it("clears the focus filter so the new subnet is checked against everything", () => {
+    const s = commitOverlapDraft({
+      ...initialState,
+      overlapInput: "A: 10.0.0.0/24\nB: 10.0.1.0/24",
+      overlapSelected: 1,
+      overlapDraft: "C: 10.0.2.0/24",
+    });
+    expect(s.overlapSelected).toBeNull();
+  });
+});
+
+describe("selectOverlapEntry / clearOverlapFilter", () => {
+  const base = { ...initialState, overlapInput: "A: 10.0.0.0/24\nB: 10.0.1.0/24" };
+
+  it("focuses a row", () => {
+    expect(selectOverlapEntry(base, 1).overlapSelected).toBe(1);
+  });
+
+  it("clicking the focused row again clears the filter", () => {
+    const focused = selectOverlapEntry(base, 1);
+    expect(selectOverlapEntry(focused, 1).overlapSelected).toBeNull();
+  });
+
+  it("ignores an index nobody holds", () => {
+    expect(selectOverlapEntry(base, 5)).toBe(base);
+    expect(selectOverlapEntry(base, -1)).toBe(base);
+  });
+
+  it("clearOverlapFilter drops the filter outright", () => {
+    expect(clearOverlapFilter(selectOverlapEntry(base, 0)).overlapSelected).toBeNull();
+  });
+});
+
+describe("removeOverlapEntries", () => {
+  const base = {
+    ...initialState,
+    overlapInput: ["A: 10.0.0.0/24", "B: 10.0.1.0/24", "C: 10.0.2.0/24", "D: 10.0.3.0/24"].join("\n"),
+  };
+
+  it("removes a single entry", () => {
+    const s = removeOverlapEntries(base, [1]);
+    expect(overlapEntries(s)).toEqual(["A: 10.0.0.0/24", "C: 10.0.2.0/24", "D: 10.0.3.0/24"]);
+  });
+
+  it("removes both sides of a conflict against the pre-cut indices", () => {
+    const s = removeOverlapEntries(base, [1, 3]);
+    expect(overlapEntries(s)).toEqual(["A: 10.0.0.0/24", "C: 10.0.2.0/24"]);
+  });
+
+  it("shifts the focus down past what was cut above it", () => {
+    const s = removeOverlapEntries({ ...base, overlapSelected: 3 }, [0, 1]);
+    expect(s.overlapSelected).toBe(1);
+  });
+
+  it("drops the focus when the focused row is one of the ones removed", () => {
+    const s = removeOverlapEntries({ ...base, overlapSelected: 2 }, [2, 3]);
+    expect(s.overlapSelected).toBeNull();
+  });
+
+  it("leaves a focus above the cut alone", () => {
+    const s = removeOverlapEntries({ ...base, overlapSelected: 0 }, [2]);
+    expect(s.overlapSelected).toBe(0);
+  });
+
+  it("ignores out-of-range and duplicate indices", () => {
+    expect(removeOverlapEntries(base, [9, -1])).toBe(base);
+    expect(overlapEntries(removeOverlapEntries(base, [1, 1]))).toHaveLength(3);
+  });
+});
+
+describe("toggleOverlapEditText / overlapSource", () => {
+  it("roster mode parses the normalized entry join", () => {
+    const s = { ...initialState, overlapInput: "  A: 10.0.0.0/24  \n\n B: 10.0.1.0/24 " };
+    expect(overlapSource(s)).toBe("A: 10.0.0.0/24\nB: 10.0.1.0/24");
+  });
+
+  it("text mode parses the raw field so error line numbers match the textarea", () => {
+    const s = { ...initialState, overlapEditText: true, overlapInput: "A: 10.0.0.0/24\n\nbad" };
+    expect(overlapSource(s)).toBe("A: 10.0.0.0/24\n\nbad");
+  });
+
+  it("entering text mode drops the filter and the draft", () => {
+    const s = toggleOverlapEditText({
+      ...initialState,
+      overlapInput: "A: 10.0.0.0/24",
+      overlapSelected: 0,
+      overlapDraft: "half-typed",
+      overlapDraftError: "half-typed —> nope",
+    });
+    expect(s.overlapEditText).toBe(true);
+    expect(s.overlapSelected).toBeNull();
+    expect(s.overlapDraft).toBe("");
+    expect(s.overlapDraftError).toBe("");
+  });
+
+  it("leaving text mode normalizes the field losslessly", () => {
+    const s = toggleOverlapEditText({
+      ...initialState,
+      overlapEditText: true,
+      overlapInput: "\n  A: 10.0.0.0/24\n\n  B: 10.0.1.0/24  \n",
+    });
+    expect(s.overlapEditText).toBe(false);
+    expect(s.overlapInput).toBe("A: 10.0.0.0/24\nB: 10.0.1.0/24");
+  });
+
+  it("round-trips the entries either way", () => {
+    const before = { ...initialState, overlapInput: "A: 10.0.0.0/24\nB: 10.0.1.0/24" };
+    const after = toggleOverlapEditText(toggleOverlapEditText(before));
+    expect(after.overlapInput).toBe(before.overlapInput);
+    expect(after.overlapEditText).toBe(false);
   });
 });
 
